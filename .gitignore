@@ -1,0 +1,4 @@
+# Bytecode from the Python helpers, written next to them when the shell runs
+# them.
+__pycache__/
+*.pyc
