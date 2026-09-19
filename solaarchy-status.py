@@ -77,7 +77,8 @@ _solaar_config.do_save = lambda *args, **kwargs: None
 #
 # The lock lives only in a directory no one else can write to, never a shared
 # one like /tmp: there another user could plant a symlink at the predictable
-# name and have every refresh open (formerly: truncate) a file of theirs.
+# name and have every refresh open (formerly: truncate) any file of this
+# user's that the link points at.
 def _private_dir(path):
     try:
         st = os.stat(path)
@@ -105,9 +106,15 @@ def _open_lock():
     d = _lock_dir()
     if d is None:
         raise OSError("no private directory for the status lock")
-    # No O_TRUNC: the file's content is never used, only its flock.
-    fd = os.open(os.path.join(d, "solaarchy-status.lock"),
-                 os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    path = os.path.join(d, "solaarchy-status.lock")
+    # No O_TRUNC: the file's content is never used, only its flock. The first
+    # run creates it with O_EXCL, so creating can never land on anything
+    # already there; later runs reopen it, and either way it is checked below.
+    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        fd = os.open(path, flags)
     st = os.fstat(fd)
     if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1:
         os.close(fd)
