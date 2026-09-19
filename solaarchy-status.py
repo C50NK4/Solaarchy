@@ -15,6 +15,7 @@ import fcntl
 import json
 import os
 import signal
+import stat
 import struct
 import sys
 import time
@@ -73,8 +74,52 @@ _solaar_config.do_save = lambda *args, **kwargs: None
 
 # One read at a time from this user: overlapping reads can pick up each
 # other's HID++ replies (see _consistent).
-_lock_path = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "solaarchy-status.lock")
-_lock = open(_lock_path, "w")
+#
+# The lock lives only in a directory no one else can write to, never a shared
+# one like /tmp: there another user could plant a symlink at the predictable
+# name and have every refresh open (formerly: truncate) a file of theirs.
+def _private_dir(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o022
+
+
+def _lock_dir():
+    for d in (os.environ.get("XDG_RUNTIME_DIR"), f"/run/user/{os.getuid()}"):
+        if d and _private_dir(d):
+            return d
+    # No usable runtime dir (e.g. run outside a login session): a private
+    # directory of our own under the user's cache instead.
+    cache = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    d = os.path.join(cache, "solaarchy")
+    try:
+        os.makedirs(d, mode=0o700, exist_ok=True)
+    except OSError:
+        return None
+    return d if _private_dir(d) else None
+
+
+def _open_lock():
+    d = _lock_dir()
+    if d is None:
+        raise OSError("no private directory for the status lock")
+    # No O_TRUNC: the file's content is never used, only its flock.
+    fd = os.open(os.path.join(d, "solaarchy-status.lock"),
+                 os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1:
+        os.close(fd)
+        raise OSError(f"{d}/solaarchy-status.lock is not a private regular file")
+    return fd
+
+
+try:
+    _lock = _open_lock()
+except OSError as e:
+    _emit({"error": f"cannot take the status lock: {e}"})
+    sys.exit(1)
 fcntl.flock(_lock, fcntl.LOCK_EX)  # the 20 s alarm bounds the wait
 signal.alarm(20)  # and the read itself gets a fresh 20 s
 

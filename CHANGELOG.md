@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1
+
+- Security: the status helper no longer falls back to a lock file at the
+  predictable shared path `/tmp/solaarchy-status.lock` when `XDG_RUNTIME_DIR`
+  is unset, where another local user could plant a symlink and have every
+  refresh truncate a file of yours. The lock now lives only in a directory
+  owned by you and closed to others (`$XDG_RUNTIME_DIR`, `/run/user/<uid>`,
+  else `~/.cache/solaarchy` created as 0700). It is opened without following
+  symlinks and without truncating, and it is refused unless it is a regular
+  file of yours with a single link.
+
 ## 1.0.0
 
 First public release.

@@ -203,8 +203,9 @@ Solaarchy does:
   ask each device for its battery and backlight state. It runs when the panel
   opens, after connection changes, and every `refreshIntervalSec`. It does not
   change any device setting and never writes Solaar's configuration. Reads are
-  serialized with a lock in `$XDG_RUNTIME_DIR`, and every read is
-  double-checked, because HID++ replies from other programs (the Solaar app
+  serialized with a lock file in a directory only you can write to
+  (`$XDG_RUNTIME_DIR`, else `~/.cache/solaarchy`), never a shared one like
+  `/tmp`, and every read is double-checked, because HID++ replies from other programs (the Solaar app
   included) can otherwise be mistaken for its own.
 - **Watching connections:** `solaarchy-monitor.py` runs for as long as the
   widget is enabled. It opens the Logitech receivers' `/dev/hidraw*` nodes

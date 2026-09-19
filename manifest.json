@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.c50nk4.solaarchy",
   "name": "Solaarchy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "C50NK4",
   "license": "MIT",
   "description": "Every connected Logitech device at a glance in the Omarchy bar: battery per device, live connect and disconnect, low-battery alerts and the keyboard backlight, read through Solaar.",
