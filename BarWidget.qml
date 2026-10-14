@@ -460,12 +460,14 @@ BarWidget {
     actionError = ""
     // Solaar lists a keyboard's backlight choices sorted by value, and their
     // names are translated and differ per model ("Enabled", "Automatic",
-    // "Manual"). Disabled is always the highest value and choice 1 is always
-    // an "on" mode, so pick by position instead of by name.
+    // "Manual"). Disabled is always the highest value and the lowest is always
+    // an "on" mode, so pick by position instead of by name. "lowest" rather
+    // than "1": Solaar indexes the choices by value, not position, so "1"
+    // finds no choice and `solaar config` crashes (seen with Solaar 1.1.20).
     // sh -c exec: a missing binary is sh exiting 127, never a failed start
     // inside the shell process.
     backlightProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
-      String(device.id), "backlight", target === 1 ? "1" : "highest"]
+      String(device.id), "backlight", target === 1 ? "lowest" : "highest"]
     backlightProc.running = true
   }
 
