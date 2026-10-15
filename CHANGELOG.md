@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.2
+
+- Turning a keyboard's backlight on from the bulb, or by right-clicking the
+  bar icon, works again. Solaar was told `1`, which on 1.1.20 is looked up as
+  a choice value rather than a position and then crashes; switching off
+  (`highest`) was never affected. The on path now sends `lowest`, the same
+  first choice in value order.
+- A keyboard or mouse that was unpaired, or re-paired into another slot under
+  a new id, no longer stays in the panel forever as asleep, including across
+  restarts. When a receiver's pairings were all read, a remembered device it
+  no longer holds is dropped, along with its low-battery flag. One whose
+  receiver was unplugged, or failed to list, is still kept as asleep.
+
+Thanks to Clayton Faria (claytonfaria) for both fixes.
+
 ## 1.0.1
 
 - Security: the status helper no longer falls back to a lock file at the
