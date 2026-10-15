@@ -305,9 +305,23 @@ BarWidget {
     // reported offline (e.g. its whole receiver was unplugged, so it was
     // never enumerated at all this round): keep its last known reading
     // instead of dropping it, exactly like a device that is merely asleep.
+    // But a device missing from a receiver that was listed in full is no
+    // longer paired to it (unpaired, or re-paired elsewhere under a new id):
+    // drop it, or it would show as asleep forever.
+    var listed = {}
+    if (Array.isArray(doc.listed))
+      for (var l = 0; l < doc.listed.length; l++) listed[String(doc.listed[l])] = true
+    var forgotten = false
     for (var leftoverId in previous) {
-      merged.push(markStale(Object.assign({}, previous[leftoverId])))
+      var gone = previous[leftoverId]
+      if (gone.receiver && gone.path && listed[gone.path]) {
+        delete lowNotified[leftoverId]
+        forgotten = true
+        continue
+      }
+      merged.push(markStale(Object.assign({}, gone)))
     }
+    if (forgotten) lowNotified = Object.assign({}, lowNotified)
 
     // Same idea for receivers: don't drop one this read didn't list while a
     // device that belongs to it is still being shown (stale or not).

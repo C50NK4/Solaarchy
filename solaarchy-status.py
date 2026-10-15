@@ -7,8 +7,10 @@ changed and Solaar's configuration file is never written; backlight changes go
 through `solaar config` so the running Solaar GUI records them and does not
 undo them when the keyboard wakes.
 
-Output: {"receivers": [...], "devices": [...], "warnings": [...]}, or
-{"error": "..."} when nothing at all could be read.
+Output: {"receivers": [...], "devices": [...], "listed": [...], "warnings": [...]},
+or {"error": "..."} when nothing at all could be read. "listed" holds the hidraw
+path of every receiver whose pairings were all read, so a device missing from
+one of them is no longer paired to it.
 """
 
 import fcntl
@@ -25,6 +27,7 @@ _stdout = sys.stdout
 # Filled in as the scan goes, so a timeout can still report what was found.
 _receivers = []
 _devices = []
+_listed = []
 _warnings = []
 
 
@@ -36,7 +39,7 @@ def _emit(doc):
 def _result():
     if not _devices and not _receivers and _warnings:
         return {"error": "; ".join(_warnings)}
-    return {"receivers": _receivers, "devices": _devices, "warnings": _warnings}
+    return {"receivers": _receivers, "devices": _devices, "listed": _listed, "warnings": _warnings}
 
 
 def _timeout(*_):
@@ -316,8 +319,10 @@ def _scan(info):
     def try_add(dev, receiver_name, label):
         try:
             _devices.append(_device(dev, receiver_name, info.path))
+            return True
         except Exception as e:
             _warnings.append(f"could not read {label}: {e}")
+            return False
 
     for obj in opened:
         if isinstance(obj, Receiver):
@@ -327,8 +332,11 @@ def _scan(info):
             except Exception as e:
                 _warnings.append(f"could not list devices on {obj.name}: {e}")
                 continue
-            for dev in paired:
-                try_add(dev, obj.name, f"a device on {obj.name}")
+            # Only a receiver whose every pairing made it into the output
+            # counts as listed: a device that failed to read is still paired.
+            added = [try_add(dev, obj.name, f"a device on {obj.name}") for dev in paired]
+            if all(added):
+                _listed.append(info.path)
         else:
             try_add(obj, None, _label(info))
 
