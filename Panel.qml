@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "haptics.js" as Haptics
 import "icons.js" as Icons
 
 // Solaarchy panel. Loaded by BarWidget.qml, which owns the device state and
@@ -22,8 +23,20 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   property int cursorIndex: -1
-  // "main": the devices; "icons": the bar icon picker sub-panel.
+  // "main": the devices; "icons": the bar icon picker sub-panel; "haptics":
+  // the level of hapticDeviceId and the events that buzz; "wave": the
+  // waveform picker for the event named by hapticEvent.
   property string page: "main"
+  property string hapticDeviceId: ""
+  property string hapticEvent: ""
+  readonly property var hapticDevice: {
+    if (!w) return null
+    for (var i = 0; i < w.devices.length; i++)
+      if (String(w.devices[i].id) === hapticDeviceId && w.devices[i].haptics) return w.devices[i]
+    return null
+  }
+  // The device can drop out from under the page (its reading lost haptics).
+  onHapticDeviceChanged: if ((page === "haptics" || page === "wave") && !hapticDevice) showPage("main")
 
   // Keyboard-cursor targets for the current page, in reading order.
   readonly property var actions: {
@@ -42,10 +55,29 @@ Panel {
       picker.push("icon-add")
       return picker
     }
+    if (page === "haptics") {
+      // Mirrors PanelContent.qml's haptics page: the level buttons, the alert
+      // rows, the desktop rows and the fullscreen switch, as they are drawn.
+      var haptic = ["back"]
+      for (var l = 0; l < Haptics.levels.length; l++) haptic.push("level:" + Haptics.levels[l].value)
+      var rows = Haptics.inGroup("alerts").concat(Haptics.inGroup("desktop"))
+      for (var r = 0; r < rows.length; r++) haptic.push("event:" + rows[r].setting)
+      haptic.push("pause")
+      return haptic
+    }
+    if (page === "wave") {
+      // The picker: Off, then the waveform tiles in their order.
+      var picker2 = ["back", "wave:off"]
+      var waves = Haptics.forDevice(hapticDevice ? hapticDevice.haptics : null)
+      for (var k = 0; k < waves.length; k++) picker2.push("wave:" + waves[k].key)
+      return picker2
+    }
     var list = ["icons", "refresh", "solaar"]
     if (w) {
-      for (var j = 0; j < w.devices.length; j++)
+      for (var j = 0; j < w.devices.length; j++) {
         if (w.devices[j].backlight) list.push("backlight:" + w.devices[j].id)
+        if (w.devices[j].haptics) list.push("haptics:" + w.devices[j].id)
+      }
     }
     return list
   }
@@ -64,6 +96,22 @@ Panel {
     cursorIndex = -1
   }
 
+  function showHaptics(device) {
+    hapticDeviceId = String(device.id)
+    showPage("haptics")
+  }
+
+  function showWavePicker(setting) {
+    hapticEvent = setting
+    showPage("wave")
+  }
+
+  // Back from a page: the picker returns to the haptics page it came from,
+  // every other sub-page to the devices.
+  function back() {
+    showPage(page === "wave" ? "haptics" : "main")
+  }
+
   function hasCursorOn(action) {
     return cursorIndex >= 0 && actions[cursorIndex] === action
   }
@@ -74,7 +122,7 @@ Panel {
 
   function runAction(name) {
     if (name === "icons") showPage("icons")
-    else if (name === "back") showPage("main")
+    else if (name === "back") back()
     else if (name === "refresh") w.refresh()
     else if (name === "solaar") w.openSolaar()
     else if (name === "icon-add") w.pickCustomIcon()
@@ -83,6 +131,14 @@ Panel {
       for (var i = 0; i < w.devices.length; i++)
         if (String(w.devices[i].id) === name.slice(10)) w.toggleBacklight(w.devices[i])
     }
+    else if (name.indexOf("haptics:") === 0) {
+      for (var j = 0; j < w.devices.length; j++)
+        if (String(w.devices[j].id) === name.slice(8)) showHaptics(w.devices[j])
+    }
+    else if (name.indexOf("level:") === 0) w.setHapticLevel(hapticDevice, parseInt(name.slice(6), 10))
+    else if (name.indexOf("event:") === 0) showWavePicker(name.slice(6))
+    else if (name === "pause") w.setHapticPauseFullscreen(!w.hapticPauseFullscreen)
+    else if (name.indexOf("wave:") === 0) w.setHapticEvent(hapticEvent, name.slice(5))
   }
 
   onOpenedChanged: {
@@ -102,7 +158,9 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(290))
+    // The haptics pages run wider, so an event's name and its waveform fit
+    // side by side on one row.
+    contentWidth: panel.fittedContentWidth(Style.space(root.page === "haptics" || root.page === "wave" ? 330 : 290))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {
@@ -117,8 +175,8 @@ Panel {
       onActivateRequested: {
         if (root.cursorIndex >= 0) root.runAction(root.actions[root.cursorIndex])
       }
-      // Escape on the icon sub-panel steps back to the devices first.
-      onCloseRequested: root.page === "icons" ? root.showPage("main") : root.close()
+      // Escape on a sub-panel steps back to the devices first.
+      onCloseRequested: root.page !== "main" ? root.back() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       // Built once the bar widget has injected itself, with both references

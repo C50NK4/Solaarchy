@@ -2,9 +2,11 @@ import QtQuick
 import QtQml
 import Qt.labs.folderlistmodel
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "haptics.js" as Haptics
 import "icons.js" as Icons
 
 // Solaarchy: Logitech devices in the Omarchy bar, through Solaar.
@@ -14,11 +16,16 @@ import "icons.js" as Icons
 // Everything goes through Solaar, which grants hidraw access with its own
 // udev rule, so this plugin adds no udev rule, no system service and no
 // hand-rolled HID++ writes:
-//   - solaarchy-status.py reads battery and backlight with Solaar's library
+//   - solaarchy-status.py reads battery, backlight and haptics with Solaar's
+//     library
 //   - solaarchy-monitor.py, a listen-only child of the shell, reports devices
 //     connecting and disconnecting, and receivers coming and going
-//   - the backlight switch runs `solaar config`, which hands the change to a
-//     running Solaar GUI so it is saved and re-applied when the keyboard wakes
+//   - the backlight switch and the haptic level run `solaar config`, which
+//     hands the change to a running Solaar GUI so it is saved and re-applied
+//     when the device wakes
+//   - solaarchy-haptics.py, a child of the shell while a device with haptics
+//     is known, plays waveforms through Solaar's library for the events
+//     picked in the settings, and for anyone running it from a script
 BarWidget {
   id: root
   moduleName: "io.github.c50nk4.solaarchy"
@@ -44,6 +51,7 @@ BarWidget {
   readonly property string helperPath: localPath("solaarchy-status.py")
   readonly property string monitorPath: localPath("solaarchy-monitor.py")
   readonly property string iconPickerPath: localPath("solaarchy-pick-icon.py")
+  readonly property string hapticsPath: localPath("solaarchy-haptics.py")
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
   readonly property int lowThreshold: intSetting("lowThreshold", 15, 5, 50)
   readonly property bool hideWhenDisconnected: boolSetting("hideWhenDisconnected", true)
@@ -129,6 +137,43 @@ BarWidget {
 
   readonly property bool refreshing: statusProc.running
   readonly property bool backlightBusy: backlightProc.running
+
+  // Haptics. Devices with a haptic motor report it in their reading; while
+  // one is known, solaarchy-haptics.py runs as the player and the events
+  // below send it a waveform. Every event setting holds a waveform name or
+  // "off", and all of them but low battery start out off.
+  readonly property var hapticDevices: devices.filter(function(d) { return !!d.haptics })
+  readonly property bool hasHaptics: hapticDevices.length > 0
+  // Device id -> level while a haptic-level change is in flight, like
+  // pendingBacklight.
+  property var pendingHapticLevel: ({})
+  readonly property bool hapticLevelBusy: hapticLevelProc.running
+  // The player's last complaint (no device reachable, say), for the panel.
+  property string hapticError: ""
+  // Last layout per keyboard and fullscreen state seen, to tell a real change
+  // from Hyprland repeating itself (see handleHyprlandEvent()).
+  property var lastLayouts: ({})
+  // Window address -> when it opened, for telling a new window's launch-time
+  // request for attention from an open window asking for it later.
+  property var windowOpenedAt: ({})
+  property string lastFullscreen: ""
+  // Picks made on the haptics page, until the shell reports them back.
+  property var hapticOverrides: ({})
+  onSettingsChanged: hapticOverrides = ({})
+  readonly property bool hapticPauseFullscreen: hapticOverrides.hapticPauseFullscreen !== undefined
+    ? hapticOverrides.hapticPauseFullscreen : boolSetting("hapticPauseFullscreen", false)
+  readonly property bool fullscreenFocused: !!Hyprland.focusedWorkspace && Hyprland.focusedWorkspace.hasFullscreen
+  readonly property var notificationApps: Haptics.parseAppMap(setting("hapticNotificationApps", ""))
+  // Only watch the session bus while some notification setting wants it.
+  readonly property bool watchNotifications: hasHaptics && (
+    waveSetting("hapticNotifications") !== "off"
+    || waveSetting("hapticNotificationsCritical") !== "off"
+    || Object.keys(notificationApps).some(function(app) { return notificationApps[app] !== "off" }))
+  onWatchNotificationsChanged: sendHaptics({ "cmd": "notifications", "enabled": watchNotifications })
+  onHasHapticsChanged: {
+    if (hasHaptics) hapticsProc.running = true
+    else { hapticsRestart.stop(); hapticsProc.running = false }
+  }
 
   // The first device with a backlight; right-clicking the bar icon toggles it.
   readonly property var keyboard: {
@@ -248,6 +293,7 @@ BarWidget {
   // follow-up is about to supersede.
   function settleBacklight() {
     if (!backlightProc.running && !refreshQueued) pendingBacklight = ({})
+    if (!hapticLevelProc.running && !refreshQueued) pendingHapticLevel = ({})
   }
 
   function applyStatus(raw) {
@@ -290,6 +336,17 @@ BarWidget {
         if (old.name) { d.name = old.name; d.fullName = old.fullName }
         if (old.kind) d.kind = old.kind
       }
+      // Online but not identified this time: Solaar's own placeholders
+      // ("Unknown device <wpid>", kind "?") when the name request went
+      // unanswered, say right as the device wakes. Keep what was known,
+      // including the selector `solaar config` needs to find it.
+      if (d.online && old && /^Unknown device/.test(String(d.name)) && old.name
+          && !/^Unknown device/.test(String(old.name))) {
+        d.name = old.name
+        d.fullName = old.fullName
+        d.selector = old.selector
+        if (old.kind && (d.kind === "?" || d.kind === "unknown")) d.kind = old.kind
+      }
       // A device we've seen before that came back without a battery or
       // backlight reading this time — asleep, its receiver busy with
       // another program, a detected HID++ reply race (d.busy), or just one
@@ -298,6 +355,7 @@ BarWidget {
       if (old) {
         if (!d.battery && old.battery) { d.battery = old.battery; d.stale = true }
         if (!d.backlight && old.backlight) d.backlight = old.backlight
+        if (!d.haptics && old.haptics) d.haptics = old.haptics
       }
       merged.push(d)
     }
@@ -380,6 +438,7 @@ BarWidget {
     Util.execArgv(["notify-send", "-a", "Solaarchy", "-i", icon,
       device.name + " battery low",
       device.battery.level + "% left. Charge it soon."])
+    playHaptic(waveSetting("hapticLowBattery"))
   }
 
   function saveState() {
@@ -419,6 +478,11 @@ BarWidget {
     try { ev = JSON.parse(line) } catch (e) { return }
     if (ev.event === "error") { monitorError = String(ev.error || "monitor failed"); return }
     monitorError = ""
+    // The player keeps devices open; one that just came or went needs finding again.
+    if ((ev.event === "link" && ev.online) || ev.event === "hotplug") {
+      hapticError = ""
+      sendHaptics({ "cmd": "rescan" })
+    }
     if (ev.event === "link" && !ev.online && markOffline(ev.path, ev.number)) return
     if (ev.event === "link" || ev.event === "hotplug") eventRefresh.restart()
   }
@@ -450,6 +514,12 @@ BarWidget {
     return backlightProc.running && !!device && pendingBacklight[device.id] !== undefined
   }
 
+  // The name `solaar config` finds a device by (see _selector() in
+  // solaarchy-status.py): its id only when an older reading has no selector.
+  function solaarSelector(device) {
+    return String(device.selector || device.id)
+  }
+
   function toggleBacklight(device) {
     device = device || keyboard
     if (!device || !device.backlight || backlightProc.running) return
@@ -465,8 +535,149 @@ BarWidget {
     // sh -c exec: a missing binary is sh exiting 127, never a failed start
     // inside the shell process.
     backlightProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
-      String(device.id), "backlight", target === 1 ? "1" : "highest"]
+      solaarSelector(device), "backlight", target === 1 ? "1" : "highest"]
     backlightProc.running = true
+  }
+
+  // A waveform setting's value: a pick just made in the panel, else the saved
+  // setting, else its default from haptics.js. Anything that isn't a waveform
+  // name counts as "off", so a typo in `omarchy bar set` mutes the event
+  // instead of breaking it.
+  function waveSetting(name) {
+    var value = hapticOverrides[name] !== undefined ? hapticOverrides[name]
+      : setting(name, Haptics.defaultFor(name))
+    value = String(value).trim().toLowerCase()
+    return Haptics.byKey(value) ? value : "off"
+  }
+
+  // From the haptics page: save the pick like any widget setting, so
+  // `omarchy bar set` and shell.json agree with the panel, and play it so it can be felt while
+  // choosing. Shown at once through hapticOverrides until the shell reports
+  // the setting back.
+  function setHapticEvent(name, waveform) {
+    var next = Object.assign({}, hapticOverrides)
+    next[name] = waveform
+    hapticOverrides = next
+    Util.execArgv(["omarchy", "bar", "set", root.moduleName, name, waveform])
+    playHaptic(waveform)
+  }
+
+  function setHapticPauseFullscreen(on) {
+    var next = Object.assign({}, hapticOverrides)
+    next.hapticPauseFullscreen = on
+    hapticOverrides = next
+    Util.execArgv(["omarchy", "bar", "set", root.moduleName, "hapticPauseFullscreen", on ? "true" : "false", "--json"])
+  }
+
+  function sendHaptics(command) {
+    if (hapticsProc.running) hapticsProc.write(JSON.stringify(command) + "\n")
+  }
+
+  function playHaptic(waveform, deviceId) {
+    if (!waveform || waveform === "off" || !hasHaptics) return
+    var command = { "cmd": "play", "waveform": waveform }
+    if (deviceId) command.device = String(deviceId)
+    sendHaptics(command)
+  }
+
+  function handleHapticsLine(line) {
+    var ev = null
+    try { ev = JSON.parse(line) } catch (e) { return }
+    if (ev.event === "ready") {
+      hapticError = ""
+      sendHaptics({ "cmd": "notifications", "enabled": watchNotifications })
+    } else if (ev.event === "error") {
+      hapticError = String(ev.error || "haptics failed")
+    } else if (ev.event === "notification") {
+      handleNotification(String(ev.app || ""), Number(ev.urgency))
+    }
+  }
+
+  // Per-app choices first (an app set to "off" stays silent), then critical
+  // urgency, then the setting for everything else. Solaarchy's own low-battery
+  // notification already buzzes through hapticLowBattery.
+  function handleNotification(app, urgency) {
+    var name = app.trim().toLowerCase()
+    if (name === "solaarchy") return
+    var wave = notificationApps[name]
+    if (wave === undefined) {
+      var critical = urgency === 2 ? waveSetting("hapticNotificationsCritical") : "off"
+      wave = critical !== "off" ? critical : waveSetting("hapticNotifications")
+    }
+    playHaptic(wave)
+  }
+
+  function handleHyprlandEvent(event) {
+    var name = String(event && event.name ? event.name : "")
+    var key = Haptics.eventSetting[name]
+    if (!key) return
+    var data = String(event.data || "")
+    if (name === "openwindow" || name === "closewindow") noteWindow(name, data.split(",")[0])
+    if (name === "urgent") {
+      // Plenty of apps ask for attention as their window first appears;
+      // that's the window opening, which hapticWindowOpen covers. Only a
+      // window that has been open a while counts. One that was open before
+      // the shell started is unknown here, and counts as old.
+      var opened = windowOpenedAt[data.trim()]
+      if (opened !== undefined && Date.now() - opened < newWindowGrace) return
+    }
+    if (name === "fullscreen") {
+      // A window opening or closing on a fullscreen workspace sends a run of
+      // fullscreen>>0 and >>1 within a few milliseconds. Wait for it to
+      // settle and buzz only if the state really changed.
+      fullscreenSettle.pendingState = data.trim()
+      fullscreenSettle.restart()
+      return
+    }
+    if (name === "activelayout") {
+      // Sent per keyboard on every focus change too, mostly naming the layout
+      // already in use, and by virtual keyboards (an input method, a tool
+      // typing for you) that flip between their own keymap and "error" on
+      // every key. Only a physical keyboard moving to a new layout counts.
+      var comma = data.indexOf(",")
+      var keyboard = data.substring(0, comma)
+      var layout = data.substring(comma + 1)
+      if (keyboard.indexOf("hl-virtual-keyboard") === 0 || layout === "error") return
+      var known = lastLayouts[keyboard]
+      var layouts = Object.assign({}, lastLayouts)
+      layouts[keyboard] = layout
+      lastLayouts = layouts
+      if (known === undefined || known === layout) return
+    }
+    // A game or a video in fullscreen: stay quiet. Going into or out of
+    // fullscreen itself still buzzes, through fullscreenSettle above.
+    if (hapticPauseFullscreen && fullscreenFocused) return
+    playHaptic(waveSetting(key))
+  }
+
+  readonly property int newWindowGrace: 3000
+
+  function noteWindow(name, address) {
+    var next = Object.assign({}, windowOpenedAt)
+    if (name === "openwindow") next[address] = Date.now()
+    else delete next[address]
+    windowOpenedAt = next
+  }
+
+  function hapticLevel(device) {
+    if (!device || !device.haptics) return 0
+    var pending = pendingHapticLevel[device.id]
+    return pending !== undefined ? pending : Number(device.haptics.level) || 0
+  }
+
+  function setHapticLevel(device, level) {
+    if (!device || !device.haptics || hapticLevelProc.running) return
+    var next = Object.assign({}, pendingHapticLevel)
+    next[device.id] = level
+    pendingHapticLevel = next
+    actionError = ""
+    // Same route as the backlight switch, so a running Solaar GUI records the
+    // level and puts it back after the device sleeps. 0 is Solaar's "off".
+    hapticLevelProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+      solaarSelector(device), "haptic-level", String(level)]
+    hapticLevelProc.pendingDevice = String(device.id)
+    hapticLevelProc.pendingLevel = level
+    hapticLevelProc.running = true
   }
 
   function openSolaar() {
@@ -655,6 +866,66 @@ BarWidget {
     }
   }
 
+  Process {
+    id: hapticLevelProc
+    property string pendingDevice: ""
+    property int pendingLevel: 0
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.pendingHapticLevel = ({})
+        root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not change the haptic level"
+      } else if (pendingLevel > 0) {
+        // One pulse at the new level, so the choice can be felt right away.
+        root.playHaptic("sharp-state-change", pendingDevice)
+      }
+      root.refresh()
+    }
+  }
+
+  Timer {
+    interval: 20000
+    running: hapticLevelProc.running
+    onTriggered: {
+      hapticLevelProc.running = false
+      root.pendingHapticLevel = ({})
+      root.actionError = "Timed out changing the haptic level"
+    }
+  }
+
+  Process {
+    id: hapticsProc
+    // pdeathsig, as for the monitor: the player stops with the shell.
+    command: ["setpriv", "--pdeathsig", "TERM", "/usr/bin/python3", root.hapticsPath, "serve"]
+    stdinEnabled: true
+    stdout: SplitParser {
+      onRead: function(line) { root.handleHapticsLine(line) }
+    }
+    onExited: if (root.hasHaptics) hapticsRestart.start()
+  }
+
+  Timer {
+    id: hapticsRestart
+    interval: 10000
+    onTriggered: if (root.hasHaptics) hapticsProc.running = true
+  }
+
+  Timer {
+    id: fullscreenSettle
+    property string pendingState: ""
+    interval: 150
+    onTriggered: {
+      if (pendingState === root.lastFullscreen) return
+      root.lastFullscreen = pendingState
+      root.playHaptic(root.waveSetting("hapticFullscreen"))
+    }
+  }
+
+  Connections {
+    target: Hyprland
+    enabled: root.hasHaptics
+    function onRawEvent(event) { root.handleHyprlandEvent(event) }
+  }
+
   // `solaar config` has no timeout of its own; if the device is unreachable
   // mid-write this is what clears the optimistic pendingBacklight state
   // instead of leaving the bulb stuck disabled until the shell restarts.
@@ -685,7 +956,13 @@ BarWidget {
     onTriggered: root.nowTick++
   }
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    // A snapshot, not a binding: Quickshell updates hasFullscreen from the
+    // same events, so a binding would already match by the time
+    // fullscreenSettle compares.
+    lastFullscreen = fullscreenFocused ? "1" : "0"
+  }
 
   // The file dialog for the "+" tile. Exit 0 prints the installed file's name,
   // 1 means the dialog was cancelled, 2 prints why it failed on stderr.
