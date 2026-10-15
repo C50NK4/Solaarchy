@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Solaarchy: print battery and backlight state of Logitech HID++ devices as JSON.
+"""Solaarchy: print battery, backlight and haptic state of Logitech HID++ devices as JSON.
 
 Read-only: it goes through Solaar's own library (python-solaar, official repos)
 and the hidraw access Solaar's udev rule already grants. No device setting is
@@ -182,6 +182,31 @@ def _backlight(dev):
     return result
 
 
+def _haptics(dev):
+    # HID++ 0x19B0, as Solaar's haptic-level and haptic-play settings read it:
+    # getCapabilities (function 0) carries a bitmask of the waveforms the device
+    # can play in bytes 4-7, and getLevel (function 1) an enabled bit and the
+    # level. Bit 0 of getLevel's byte 2 marks a device that only takes Solaar's
+    # four steps (25/50/75/100) instead of any level from 0 to 100.
+    try:
+        if not dev.features or SupportedFeature.HAPTIC not in dev.features:
+            return None
+        caps = dev.feature_request(SupportedFeature.HAPTIC, 0x00)
+        level = dev.feature_request(SupportedFeature.HAPTIC, 0x10)
+        if not caps or not level or len(caps) < 8 or len(level) < 3:
+            return None
+        mask = int.from_bytes(caps[4:8], "big")
+        enabled = bool(level[0] & 0x01)
+        return {
+            "enabled": enabled,
+            "level": level[1] if enabled else 0,
+            "steps": bool(level[2] & 0x01),
+            "waveforms": [i for i in range(32) if mask & (1 << i)],
+        }
+    except Exception:
+        return None
+
+
 def _online(dev):
     # Without a listener for receiver notifications, Solaar marks every paired
     # device online. Ping, as `solaar show` does, so a device that is switched
@@ -245,6 +270,18 @@ def _device_id(dev, path):
     return _safe(lambda: dev.wpid)
 
 
+def _selector(dev):
+    """What `solaar config` finds this device by.
+
+    Solaar's CLI matches a serial number, a codename, a kind or part of a
+    name, never the unitId that _device_id() falls back to, so a device with
+    no serial (a mouse or keyboard on Bluetooth) would not be found by its
+    id. The codename is next best: unique unless two of the same model are
+    connected.
+    """
+    return _safe(lambda: dev.serial) or (_safe(lambda: dev.codename) or "").strip() or None
+
+
 def _identity(dev):
     """(name, fullName, kind), the same way whether read online or offline."""
     return (
@@ -258,6 +295,7 @@ def _device(dev, receiver_name, path):
     online = _online(dev)
     entry = {
         "id": _device_id(dev, path),
+        "selector": _selector(dev),
         # Placeholders; BarWidget.qml's merge already knows how to keep an
         # old name/kind showing when a device comes back as "Unknown device"/
         # "?" (Solaar's own not-yet-identified sentinels), which is what an
@@ -272,17 +310,19 @@ def _device(dev, receiver_name, path):
         "online": online,
         "battery": None,
         "backlight": None,
+        "haptics": None,
     }
     if online:
         for attempt in range(2):
             name, full_name, kind = _identity(dev)
-            battery, backlight = _battery(dev), _backlight(dev)
+            battery, backlight, haptics = _battery(dev), _backlight(dev), _haptics(dev)
             # codename/name/kind reach HID++2.0 devices through the same
             # feature_request() primitive, so they're checked by the same
             # cross-process consistency audit, not trusted separately.
             if _safe(lambda: _consistent(dev), False):
                 entry["name"], entry["fullName"], entry["kind"] = name, full_name, kind
                 entry["battery"], entry["backlight"] = battery, backlight
+                entry["haptics"] = haptics
                 break
             _forget_features(dev)
             time.sleep(0.3)

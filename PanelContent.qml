@@ -1,10 +1,13 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "haptics.js" as Haptics
 import "icons.js" as Icons
 
-// Solaarchy panel body. Two pages that swap in place: the devices, and the bar
-// icon picker opened from the palette button next to Refresh.
+// Solaarchy panel body. Pages that swap in place: the devices, the bar icon
+// picker opened from the palette button next to Refresh, the haptics of one
+// device, opened from the button next to its name, and from there the
+// waveform picker for one event.
 Item {
   id: content
 
@@ -13,7 +16,10 @@ Item {
   property var w
   property var view
 
-  implicitHeight: content.view.page === "icons" ? iconsPage.implicitHeight : mainPage.implicitHeight
+  implicitHeight: content.view.page === "icons" ? iconsPage.implicitHeight
+    : content.view.page === "haptics" ? hapticsPage.implicitHeight
+    : content.view.page === "wave" ? wavePage.implicitHeight
+    : mainPage.implicitHeight
 
   // ================= Devices =================
   Column {
@@ -165,6 +171,7 @@ Item {
           readonly property bool low: live && !!modelData.battery && modelData.battery.level <= content.w.lowThreshold
           readonly property real fraction: modelData.battery ? Math.max(0, Math.min(1, modelData.battery.level / 100)) : 0
           readonly property bool hasBacklight: !!modelData.backlight
+          readonly property bool hasHaptics: !!modelData.haptics
           readonly property bool lightOn: content.w.backlightOn(modelData)
           readonly property real labelsGap: Style.space(8)
           width: parent.width
@@ -196,16 +203,17 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(1)
 
-              // Name, with the backlight switch in the space after it on keyboards.
+              // Name, with the device's buttons in the space after it: the
+              // backlight switch on keyboards, haptics on devices that buzz.
               Item {
                 width: parent.width
-                implicitHeight: Math.max(nameText.implicitHeight, bulb.visible ? bulb.implicitHeight : 0)
+                implicitHeight: Math.max(nameText.implicitHeight, deviceButtons.visible ? deviceButtons.implicitHeight : 0)
 
                 Text {
                   id: nameText
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Math.min(implicitWidth, parent.width - (bulb.visible ? bulb.width + Style.space(8) : 0))
+                  width: Math.min(implicitWidth, parent.width - (deviceButtons.visible ? deviceButtons.width + Style.space(8) : 0))
                   textFormat: Text.PlainText
                   text: deviceItem.modelData.name
                   color: content.view.fg
@@ -215,28 +223,47 @@ Item {
                   elide: Text.ElideRight
                 }
 
-                PanelActionButton {
-                  id: bulb
+                Row {
+                  id: deviceButtons
                   // Centred in the free space between the end of the name and
                   // the percentage, which starts labelsGap past this row.
                   readonly property real freeStart: nameText.width
                   readonly property real freeEnd: parent.width + deviceItem.labelsGap
-                  visible: deviceItem.hasBacklight
+                  visible: deviceItem.hasBacklight || deviceItem.hasHaptics
                   x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
                   anchors.verticalCenter: parent.verticalCenter
-                  fontSize: Style.font.body
-                  iconText: deviceItem.lightOn ? "󰛨" : "󰌶"
-                  foreground: deviceItem.lightOn ? content.view.fg : content.view.dim
-                  hoverColor: content.view.fg
-                  fontFamily: content.view.fontFamily
-                  enabled: !content.w.backlightBusy && deviceItem.modelData.online
-                  hasCursor: content.view.hasCursorOn("backlight:" + deviceItem.modelData.id)
-                  tooltipText: content.w.backlightBusyFor(deviceItem.modelData)
-                    ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
-                    : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
-                      + (deviceItem.lightOn ? "off" : "on")
-                  onClicked: content.w.toggleBacklight(deviceItem.modelData)
-                  onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
+                  spacing: Style.space(2)
+
+                  PanelActionButton {
+                    id: bulb
+                    visible: deviceItem.hasBacklight
+                    fontSize: Style.font.body
+                    iconText: deviceItem.lightOn ? "󰛨" : "󰌶"
+                    foreground: deviceItem.lightOn ? content.view.fg : content.view.dim
+                    hoverColor: content.view.fg
+                    fontFamily: content.view.fontFamily
+                    enabled: !content.w.backlightBusy && deviceItem.modelData.online
+                    hasCursor: content.view.hasCursorOn("backlight:" + deviceItem.modelData.id)
+                    tooltipText: content.w.backlightBusyFor(deviceItem.modelData)
+                      ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
+                      : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
+                        + (deviceItem.lightOn ? "off" : "on")
+                    onClicked: content.w.toggleBacklight(deviceItem.modelData)
+                    onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
+                  }
+
+                  PanelActionButton {
+                    visible: deviceItem.hasHaptics
+                    fontSize: Style.font.body
+                    iconText: "󰕦"
+                    foreground: content.w.hapticLevel(deviceItem.modelData) > 0 ? content.view.fg : content.view.dim
+                    hoverColor: content.view.fg
+                    fontFamily: content.view.fontFamily
+                    hasCursor: content.view.hasCursorOn("haptics:" + deviceItem.modelData.id)
+                    tooltipText: "Haptics: level and waveforms"
+                    onClicked: content.view.showHaptics(deviceItem.modelData)
+                    onHovered: function(h) { content.view.hoverAction("haptics:" + deviceItem.modelData.id, h) }
+                  }
                 }
               }
 
@@ -322,6 +349,252 @@ Item {
     }
   }
 
+  // ================= Haptics =================
+  // One device's haptic level, and the events that buzz, each with the
+  // waveform it plays: a row opens the picker below.
+  Column {
+    id: hapticsPage
+    readonly property var device: content.view.hapticDevice
+    readonly property int shownLevel: Haptics.nearestLevel(content.w.hapticLevel(device))
+    visible: content.view.page === "haptics"
+    width: parent.width
+    spacing: Style.space(14)
+
+    Item {
+      width: parent.width
+      implicitHeight: Math.max(hapticsBack.implicitHeight, hapticsTitle.implicitHeight)
+
+      PanelActionButton {
+        id: hapticsBack
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        iconText: "󰁍"
+        tooltipText: "Back to devices"
+        foreground: content.view.fg
+        fontFamily: content.view.fontFamily
+        hasCursor: content.view.hasCursorOn("back")
+        onClicked: content.view.back()
+        onHovered: function(h) { content.view.hoverAction("back", h) }
+      }
+
+      Text {
+        id: hapticsTitle
+        anchors.left: hapticsBack.right
+        anchors.leftMargin: Style.space(8)
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: hapticsPage.device ? "Haptics · " + hapticsPage.device.name : "Haptics"
+        color: content.view.fg
+        font.family: content.view.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        elide: Text.ElideRight
+      }
+    }
+
+    PanelSeparator { foreground: content.view.fg }
+
+    Column {
+      width: parent.width
+      spacing: Style.space(8)
+
+      PanelSectionHeader {
+        text: "LEVEL"
+        foreground: content.view.fg
+        fontFamily: content.view.fontFamily
+      }
+
+      Row {
+        id: levelRow
+        width: parent.width
+        spacing: content.tileGap
+        readonly property int buttonWidth: Math.floor((width - spacing * (Haptics.levels.length - 1)) / Haptics.levels.length)
+
+        Repeater {
+          model: Haptics.levels
+
+          Item {
+            id: levelButton
+            required property var modelData
+            required property int index
+            readonly property string action: "level:" + modelData.value
+            readonly property bool chosen: hapticsPage.shownLevel === modelData.value
+            // The last button takes the leftover pixels, so the row ends flush.
+            width: index === Haptics.levels.length - 1
+              ? levelRow.width - (levelRow.buttonWidth + levelRow.spacing) * index
+              : levelRow.buttonWidth
+            height: Style.space(30)
+            opacity: content.w.hapticLevelBusy ? 0.6 : 1.0
+
+            Button {
+              anchors.fill: parent
+              bordered: true
+              selected: levelButton.chosen
+              foreground: content.view.fg
+              fontFamily: content.view.fontFamily
+              hasCursor: content.view.hasCursorOn(levelButton.action)
+              tooltipText: levelButton.modelData.value === 0 ? "Haptics off" : "Level " + levelButton.modelData.value
+              onClicked: content.w.setHapticLevel(hapticsPage.device, levelButton.modelData.value)
+              onHovered: function(h) { content.view.hoverAction(levelButton.action, h) }
+            }
+
+            Text {
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: levelButton.modelData.label
+              color: levelButton.chosen ? Style.selectedStateColor(content.view.fg, Color.accent) : content.view.fg
+              font.family: content.view.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+      }
+    }
+
+    EventSection { title: "ALERTS"; events: Haptics.inGroup("alerts") }
+
+    EventSection { title: "DESKTOP"; events: Haptics.inGroup("desktop") }
+
+    // Quiet in fullscreen: the whole row is the switch.
+    Item {
+      width: parent.width
+      implicitHeight: Style.space(30)
+
+      Button {
+        anchors.fill: parent
+        foreground: content.view.fg
+        fontFamily: content.view.fontFamily
+        hasCursor: content.view.hasCursorOn("pause")
+        tooltipText: "No desktop haptics while a fullscreen window is focused (games, video). Alerts still buzz."
+        onClicked: content.w.setHapticPauseFullscreen(!content.w.hapticPauseFullscreen)
+        onHovered: function(h) { content.view.hoverAction("pause", h) }
+      }
+
+      Text {
+        anchors.left: parent.left
+        anchors.leftMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: "Quiet in fullscreen"
+        color: content.view.fg
+        font.family: content.view.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      ToggleSwitch {
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+        interactive: false
+        checked: content.w.hapticPauseFullscreen
+        foreground: content.view.fg
+      }
+    }
+
+    MessageText {
+      visible: content.w.hapticError !== ""
+      text: content.w.hapticError
+      urgent: true
+    }
+
+    MessageText {
+      visible: hapticsPage.shownLevel === 0
+      text: "Haptics are off on this device, so nothing plays until a level is picked."
+    }
+
+    MessageText {
+      text: "Per-app notification waveforms: omarchy bar set " + content.w.moduleName
+        + " hapticNotificationApps \"slack=knock, spotify=off\". From a script: "
+        + content.w.hapticsPath.replace(content.w.home, "~") + " play completed"
+    }
+  }
+
+  // ================= Waveform picker =================
+  // The waveform for one event: Off, or a tile per waveform the device can
+  // play. Picking one saves it and plays it, so choosing is also trying.
+  Column {
+    id: wavePage
+    readonly property var event: Haptics.eventFor(content.view.hapticEvent)
+    readonly property string current: content.w.waveSetting(content.view.hapticEvent)
+    visible: content.view.page === "wave"
+    width: parent.width
+    spacing: Style.space(14)
+
+    Item {
+      width: parent.width
+      implicitHeight: Math.max(waveBack.implicitHeight, waveTitle.implicitHeight)
+
+      PanelActionButton {
+        id: waveBack
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        iconText: "󰁍"
+        tooltipText: "Back to haptics"
+        foreground: content.view.fg
+        fontFamily: content.view.fontFamily
+        hasCursor: content.view.hasCursorOn("back")
+        onClicked: content.view.back()
+        onHovered: function(h) { content.view.hoverAction("back", h) }
+      }
+
+      Text {
+        id: waveTitle
+        anchors.left: waveBack.right
+        anchors.leftMargin: Style.space(8)
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: wavePage.event ? wavePage.event.label : "Waveform"
+        color: content.view.fg
+        font.family: content.view.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        elide: Text.ElideRight
+      }
+    }
+
+    PanelSeparator { foreground: content.view.fg }
+
+    MessageText {
+      visible: !!wavePage.event
+      text: wavePage.event ? wavePage.event.description : ""
+    }
+
+    WaveTile {
+      width: parent.width
+      key: "off"
+      label: "Off"
+    }
+
+    Grid {
+      id: waveGrid
+      width: parent.width
+      columns: 2
+      columnSpacing: content.tileGap
+      rowSpacing: content.tileGap
+      readonly property int baseWidth: Math.floor((width - columnSpacing) / 2)
+
+      Repeater {
+        model: Haptics.forDevice(content.view.hapticDevice ? content.view.hapticDevice.haptics : null)
+
+        WaveTile {
+          required property var modelData
+          required property int index
+          key: modelData.key
+          label: modelData.label
+          width: index % 2 === 1 ? waveGrid.width - waveGrid.baseWidth - waveGrid.columnSpacing : waveGrid.baseWidth
+        }
+      }
+    }
+
+    MessageText {
+      text: "Pick one to feel it; it is saved right away."
+        + (wavePage.event && wavePage.event.defaultValue !== "off"
+          ? " Default: " + Haptics.labelFor(wavePage.event.defaultValue) + "." : "")
+    }
+  }
+
   // ================= Bar icon picker =================
   // Every section is a header over a full-width block of equal tiles, so all
   // tiles share one width, gap and height and line up across sections.
@@ -395,6 +668,107 @@ Item {
       color: content.w.iconPickError !== "" ? content.view.urgent : content.view.dim
       font.family: content.view.fontFamily
       font.pixelSize: Style.font.caption
+    }
+  }
+
+  // A section of the haptics page: a header over one row per event, each
+  // showing the waveform it plays. A row opens the waveform picker.
+  component EventSection: Column {
+    id: eventSection
+    property string title: ""
+    property var events: []
+    width: parent ? parent.width : 0
+    spacing: Style.space(4)
+
+    PanelSectionHeader {
+      text: eventSection.title
+      foreground: content.view.fg
+      fontFamily: content.view.fontFamily
+    }
+
+    Repeater {
+      model: eventSection.events
+
+      Item {
+        id: eventRow
+        required property var modelData
+        readonly property string action: "event:" + modelData.setting
+        readonly property string wave: content.w.waveSetting(modelData.setting)
+        width: eventSection.width
+        implicitHeight: Style.space(26)
+
+        Button {
+          anchors.fill: parent
+          foreground: content.view.fg
+          fontFamily: content.view.fontFamily
+          hasCursor: content.view.hasCursorOn(eventRow.action)
+          tooltipText: eventRow.modelData.description + " Click to choose its waveform."
+          onClicked: content.view.showWavePicker(eventRow.modelData.setting)
+          onHovered: function(h) { content.view.hoverAction(eventRow.action, h) }
+        }
+
+        Text {
+          anchors.left: parent.left
+          anchors.leftMargin: Style.space(8)
+          anchors.right: waveLabel.left
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: eventRow.modelData.label
+          color: content.view.fg
+          font.family: content.view.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          elide: Text.ElideRight
+        }
+
+        Text {
+          id: waveLabel
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(8)
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: Haptics.labelFor(eventRow.wave) + "  ›"
+          color: eventRow.wave === "off" ? content.view.dim : content.view.fg
+          font.family: content.view.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+      }
+    }
+  }
+
+  // One choice on the waveform picker.
+  component WaveTile: Item {
+    id: waveTile
+    property string key: ""
+    property string label: ""
+    readonly property string action: "wave:" + key
+    readonly property bool chosen: wavePage.current === key
+    height: Style.space(30)
+
+    Button {
+      anchors.fill: parent
+      bordered: true
+      selected: waveTile.chosen
+      foreground: content.view.fg
+      fontFamily: content.view.fontFamily
+      hasCursor: content.view.hasCursorOn(waveTile.action)
+      tooltipText: waveTile.key === "off" ? "No pulse for this event" : "Feel it and use it · " + waveTile.key
+      onClicked: content.w.setHapticEvent(content.view.hapticEvent, waveTile.key)
+      onHovered: function(h) { content.view.hoverAction(waveTile.action, h) }
+    }
+
+    Text {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.margins: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      horizontalAlignment: Text.AlignHCenter
+      textFormat: Text.PlainText
+      text: waveTile.label
+      color: waveTile.chosen ? Style.selectedStateColor(content.view.fg, Color.accent) : content.view.fg
+      font.family: content.view.fontFamily
+      font.pixelSize: Style.font.bodySmall
+      elide: Text.ElideRight
     }
   }
 

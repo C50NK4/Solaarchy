@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.0
+
+- Haptics, for mice with a haptic motor (MX Master 4), through Solaar's
+  library (HID++ feature 0x19B0):
+  - A vibrate button next to the mouse's name opens its haptics page: the
+    level (off/low/medium/high/max, set through `solaar config` so the Solaar
+    app keeps it, with a pulse at the new level) and a row per event. A row
+    opens a picker of Off and every waveform the mouse reports; picking one
+    saves it and plays it.
+  - Event haptics, each a setting holding a waveform name or `off`: low
+    battery, desktop notifications with critical and per-app overrides, and
+    Hyprland events: a window asking for attention, the system bell,
+    workspace switches, windows opening, closing and moving, fullscreen,
+    floating, screen sharing, monitors, submaps and keyboard layouts. Low
+    battery, attention, the bell and critical notifications start out on;
+    the rest start out off. An option keeps desktop haptics quiet while a
+    fullscreen window is focused.
+  - `solaarchy-haptics.py play <waveform>` and `list`, for binds, scripts and
+    hooks. While the widget runs, requests go over a private socket to its
+    player and return at once.
+  - Notifications are only watched while a notification haptic is set, and
+    only the app name and urgency are read.
+- The status helper reads each device's haptic level and waveforms alongside
+  battery and backlight, under the same consistency check.
+- Fix: the backlight switch did nothing on a keyboard without a serial
+  number (one connected over Bluetooth). Solaarchy identifies such a device
+  by its unitId, which `solaar config` can't look up; it now passes the
+  serial, or else the codename, which Solaar does match.
+
 ## 1.0.1
 
 - Security: the status helper no longer falls back to a lock file at the
