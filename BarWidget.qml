@@ -280,7 +280,20 @@ BarWidget {
     for (var j = 0; j < incoming.length; j++) {
       var d = incoming[j]
       var old = previous[d.id]
-      if (old) delete previous[d.id]
+      // A directly-connected (Bluetooth/USB) device read before its serial
+      // answered comes back under a fallback id ("00000000" or path:number):
+      // it is still the device already shown on that node, not a new one.
+      if (!old && !d.receiver) {
+        for (var pid in previous) {
+          var p = previous[pid]
+          if (!p.receiver && p.path === d.path && p.number === d.number) {
+            old = p
+            if (!d.online) d.id = p.id
+            break
+          }
+        }
+      }
+      if (old) delete previous[old.id]
       d.stale = false
       if (d.battery) d.battery.readAt = now
       if (!d.online && old) {
@@ -311,10 +324,16 @@ BarWidget {
     var listed = {}
     if (Array.isArray(doc.listed))
       for (var l = 0; l < doc.listed.length; l++) listed[String(doc.listed[l])] = true
+    // Hidraw node + slot of every direct device read this time: a leftover
+    // direct entry on the same node is a duplicate of it under an older id.
+    var directNodes = {}
+    for (var dn = 0; dn < merged.length; dn++)
+      if (!merged[dn].receiver && merged[dn].path) directNodes[merged[dn].path + ":" + merged[dn].number] = true
     var forgotten = false
     for (var leftoverId in previous) {
       var gone = previous[leftoverId]
-      if (gone.receiver && gone.path && listed[gone.path]) {
+      if ((gone.receiver && gone.path && listed[gone.path])
+          || (!gone.receiver && directNodes[gone.path + ":" + gone.number])) {
         delete lowNotified[leftoverId]
         forgotten = true
         continue

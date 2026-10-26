@@ -236,11 +236,13 @@ def _device_id(dev, path):
     # id and get merged into one entry; path:number (the receiver's hidraw
     # node plus this device's pairing slot, or a directly-connected device's
     # own node) disambiguates them and is available whenever wpid would be.
+    # A device that hasn't answered yet (e.g. a Bluetooth keyboard waking up)
+    # reports an all-zero serial/unitId: not an identity, skip it.
     serial = _safe(lambda: dev.serial)
-    if serial:
+    if serial and serial.strip("0"):
         return serial
     unit_id = _safe(lambda: dev.unitId)
-    if unit_id:
+    if unit_id and unit_id.strip("0"):
         return unit_id
     number = _safe(lambda: dev.number)
     if path and number is not None:
