@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.3
+
+- A Bluetooth device read before it has a real serial no longer leaves ghost
+  rows. An all-zero serial, or a fallback path-and-slot id, is not kept as an
+  extra asleep copy once the real serial answers.
+- When the same id is online on one connection and asleep on another, the
+  panel shows only the online one. The asleep link stays paired and shows
+  again when it is the one that is up.
+- Backlight for a directly connected device is sent by its name, so it reaches
+  the online keyboard instead of an asleep receiver slot with the same serial.
+
+Thanks to Thibaut Maurras (Foufou-exe) for the Bluetooth ghost-row fix.
+
 ## 1.0.2
 
 - Turning a keyboard's backlight on from the bulb, or by right-clicking the
