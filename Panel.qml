@@ -44,8 +44,8 @@ Panel {
     }
     var list = ["icons", "refresh", "solaar"]
     if (w) {
-      for (var j = 0; j < w.devices.length; j++)
-        if (w.devices[j].backlight) list.push("backlight:" + w.devices[j].id)
+      for (var j = 0; j < w.shown.length; j++)
+        if (w.shown[j].backlight) list.push("backlight:" + w.shown[j].id)
     }
     return list
   }
@@ -80,8 +80,15 @@ Panel {
     else if (name === "icon-add") w.pickCustomIcon()
     else if (name.indexOf("icon:") === 0) w.chooseIcon(name.slice(5))
     else if (name.indexOf("backlight:") === 0) {
-      for (var i = 0; i < w.devices.length; i++)
-        if (String(w.devices[i].id) === name.slice(10)) w.toggleBacklight(w.devices[i])
+      // Two links to one keyboard share an id. The bulb click passes its own
+      // row; this lookup must not stop on the asleep receiver slot.
+      var wanted = name.slice(10)
+      var chosen = null
+      for (var i = 0; i < w.shown.length; i++) {
+        if (String(w.shown[i].id) !== wanted || !w.shown[i].backlight) continue
+        if (!chosen || w.shown[i].online) chosen = w.shown[i]
+      }
+      if (chosen) w.toggleBacklight(chosen)
     }
   }
 

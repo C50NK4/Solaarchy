@@ -138,7 +138,7 @@ Item {
       }
 
       Text {
-        visible: content.w.devices.length === 0
+        visible: content.w.shown.length === 0
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
@@ -152,7 +152,7 @@ Item {
       }
 
       Repeater {
-        model: content.w.devices
+        model: content.w.shown
 
         Column {
           id: deviceItem

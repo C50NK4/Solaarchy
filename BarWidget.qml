@@ -97,6 +97,21 @@ BarWidget {
   // device keeps its last battery reading (flagged stale) instead of vanishing.
   // The list is saved to statePath, so that also survives a shell restart.
   property var devices: []
+  // The asleep link of a unit that is online on another connection stays in
+  // `devices` (and the saved state) so it can come back when the live link
+  // drops. The panel lists `shown`. Both asleep, or both online, stay listed.
+  readonly property var shown: {
+    var live = {}
+    for (var i = 0; i < devices.length; i++)
+      if (devices[i].online) live[String(devices[i].id)] = true
+    var out = []
+    for (var j = 0; j < devices.length; j++) {
+      var d = devices[j]
+      if (!d.online && live[String(d.id)]) continue
+      out.push(d)
+    }
+    return out
+  }
   property var receivers: []
   // Device ids already warned about. An id is dropped once a fresh reading
   // shows that device charging or back above the threshold.
@@ -130,11 +145,17 @@ BarWidget {
   readonly property bool refreshing: statusProc.running
   readonly property bool backlightBusy: backlightProc.running
 
-  // The first device with a backlight; right-clicking the bar icon toggles it.
+  // Right-clicking the bar icon toggles this device. Prefer one that is
+  // online: the same keyboard can stay paired to a receiver while it is
+  // connected directly, and that asleep row still has a cached backlight.
   readonly property var keyboard: {
-    for (var i = 0; i < devices.length; i++)
-      if (devices[i].backlight) return devices[i]
-    return null
+    var fallback = null
+    for (var i = 0; i < shown.length; i++) {
+      if (!shown[i].backlight) continue
+      if (shown[i].online) return shown[i]
+      if (!fallback) fallback = shown[i]
+    }
+    return fallback
   }
 
   // A fresh, currently-connected reading — the same predicate
@@ -236,6 +257,20 @@ BarWidget {
     return String(setting(name, fallback)) !== "false"
   }
 
+  // Receiver slot, or one direct hidraw node. Two links to one unit share an
+  // id; matching on id alone let the Bluetooth name replace the receiver row.
+  function sameLink(a, b) {
+    if (!!a.receiver !== !!b.receiver || a.number !== b.number) return false
+    if (a.receiver) return String(a.receiver) === String(b.receiver)
+    return a.path === b.path
+  }
+
+  // False for Solaar's own stand-in when a device could not be asked its name.
+  function reportedName(name) {
+    var n = String(name || "").trim()
+    return n !== "" && n !== "?" && n.indexOf("Unknown device") !== 0
+  }
+
   function refresh() {
     // Asked mid-read (e.g. right after a backlight switch): that read may
     // predate the change, so run another one as soon as it ends.
@@ -271,36 +306,51 @@ BarWidget {
     }
     warnings = Array.isArray(doc.warnings) ? doc.warnings.map(String) : []
 
-    var previous = {}
-    for (var i = 0; i < devices.length; i++) previous[devices[i].id] = devices[i]
+    // A list, not an id map: the same id can be online on one link and asleep
+    // on another, and each has to keep its own name and last reading.
+    var previous = []
+    for (var i = 0; i < devices.length; i++) previous.push(devices[i])
 
     var now = Date.now()
     var merged = []
     var incoming = doc.devices || []
     for (var j = 0; j < incoming.length; j++) {
       var d = incoming[j]
-      var old = previous[d.id]
-      // A directly-connected (Bluetooth/USB) device read before its serial
-      // answered comes back under a fallback id ("00000000" or path:number):
-      // it is still the device already shown on that node, not a new one.
-      if (!old && !d.receiver) {
-        for (var pid in previous) {
-          var p = previous[pid]
-          if (!p.receiver && p.path === d.path && p.number === d.number) {
-            old = p
-            if (!d.online) d.id = p.id
-            break
-          }
+      var old = null
+      var oldAt = -1
+      var directSameId = -1
+      var directSameIdCount = 0
+      var nodeAt = -1
+      for (var n = 0; n < previous.length; n++) {
+        var p = previous[n]
+        if (!p) continue
+        if (String(p.id) === String(d.id) && sameLink(p, d)) oldAt = n
+        if (!d.receiver && !p.receiver && String(p.id) === String(d.id)) {
+          directSameIdCount++
+          directSameId = n
         }
+        if (!d.receiver && !p.receiver && p.path === d.path && p.number === d.number) nodeAt = n
       }
-      if (old) delete previous[old.id]
+      if (oldAt >= 0) old = previous[oldAt]
+      else if (!d.receiver && directSameIdCount === 1) {
+        oldAt = directSameId
+        old = previous[oldAt]
+      } else if (nodeAt >= 0) {
+        // A directly-connected device read before its serial answered comes
+        // back under a fallback id ("00000000" or path:number): it is still
+        // the device already shown on that node, not a new one.
+        oldAt = nodeAt
+        old = previous[oldAt]
+        if (!d.online) d.id = old.id
+      }
+      if (old) previous[oldAt] = null
       d.stale = false
       if (d.battery) d.battery.readAt = now
       if (!d.online && old) {
-        // An unreachable device can't be asked for its name or type at all
-        // (unlike Solaar's own "Unknown device <wpid>"/"?" fallbacks, which
-        // are just as easy to keep instead of pattern-matching for).
-        if (old.name) { d.name = old.name; d.fullName = old.fullName }
+        // Keep the last real name only when this read has Solaar's
+        // "Unknown device <wpid>"/"?" stand-in. A name this link reported
+        // (the receiver's own "MX Keys Mini") stays on this link.
+        if (old.name && !reportedName(d.name)) { d.name = old.name; d.fullName = old.fullName }
         if (old.kind) d.kind = old.kind
       }
       // A device we've seen before that came back without a battery or
@@ -330,11 +380,15 @@ BarWidget {
     for (var dn = 0; dn < merged.length; dn++)
       if (!merged[dn].receiver && merged[dn].path) directNodes[merged[dn].path + ":" + merged[dn].number] = true
     var forgotten = false
-    for (var leftoverId in previous) {
-      var gone = previous[leftoverId]
+    for (var li = 0; li < previous.length; li++) {
+      var gone = previous[li]
+      if (!gone) continue
+      // Hiding an asleep twin leaves it in `devices`, so it is still here
+      // to match the next read. Drop it only when its receiver was listed
+      // in full and it was not among the pairings — that is an unpair.
       if ((gone.receiver && gone.path && listed[gone.path])
           || (!gone.receiver && directNodes[gone.path + ":" + gone.number])) {
-        delete lowNotified[leftoverId]
+        delete lowNotified[gone.id]
         forgotten = true
         continue
       }
@@ -356,14 +410,19 @@ BarWidget {
     var sig = deviceSignature(merged)
     if (sig === lastDeviceSignature) {
       // Nothing rendered actually changed: patch each device's freshest
-      // readAt in place (by id, since merge order isn't guaranteed stable)
-      // instead of publishing a new array, so "read X ago" is still correct
-      // whenever this device eventually does go stale, without forcing a
-      // Repeater rebuild for a read that changed nothing on screen.
-      var freshById = {}
-      for (var f = 0; f < merged.length; f++) freshById[merged[f].id] = merged[f]
+      // readAt in place (by link — two connections can share an id — since
+      // merge order isn't guaranteed stable) instead of publishing a new
+      // array, so "read X ago" is still correct whenever this device
+      // eventually does go stale, without forcing a Repeater rebuild for a
+      // read that changed nothing on screen.
       for (var k = 0; k < devices.length; k++) {
-        var fresh = freshById[devices[k].id]
+        var fresh = null
+        for (var f = 0; f < merged.length; f++) {
+          if (String(merged[f].id) === String(devices[k].id) && sameLink(merged[f], devices[k])) {
+            fresh = merged[f]
+            break
+          }
+        }
         if (devices[k].battery && fresh && fresh.battery) devices[k].battery.readAt = fresh.battery.readAt
       }
     } else {
@@ -483,6 +542,16 @@ BarWidget {
     return backlightProc.running && !!device && pendingBacklight[device.id] !== undefined
   }
 
+  // `solaar config` matches a serial, a receiver slot 1..6, or a device
+  // name. A receiver pairing's serial is our id. A direct Bluetooth or USB
+  // node reports the same unit id, but its Solaar serial is empty, so the
+  // serial only hits the asleep receiver slot and the CLI reports that no
+  // online device matched. The codename (our name) matches the direct node.
+  function solaarDeviceArg(device) {
+    if (!device.receiver && device.name) return String(device.name)
+    return String(device.id)
+  }
+
   function toggleBacklight(device) {
     device = device || keyboard
     if (!device || !device.backlight || backlightProc.running) return
@@ -500,7 +569,7 @@ BarWidget {
     // sh -c exec: a missing binary is sh exiting 127, never a failed start
     // inside the shell process.
     backlightProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
-      String(device.id), "backlight", target === 1 ? "lowest" : "highest"]
+      solaarDeviceArg(device), "backlight", target === 1 ? "lowest" : "highest"]
     backlightProc.running = true
   }
 
@@ -583,7 +652,7 @@ BarWidget {
   readonly property string metaText: {
     if (refreshing && !loaded) return "Reading devices…"
     if (lastError !== "" && !loaded) return "Unavailable"
-    var parts = [devices.length === 1 ? "1 device" : devices.length + " devices"]
+    var parts = [shown.length === 1 ? "1 device" : shown.length + " devices"]
     var age = ageText()
     if (refreshing) parts.push("reading…")
     else if (age !== "") parts.push(age)
@@ -593,8 +662,8 @@ BarWidget {
   readonly property string barTooltip: {
     if (!loaded) return lastError !== "" ? "Solaarchy: " + lastError : "Solaarchy: reading devices…"
     var parts = []
-    for (var i = 0; i < devices.length; i++) {
-      var d = devices[i]
+    for (var i = 0; i < shown.length; i++) {
+      var d = shown[i]
       parts.push(d.name + " " + percentText(d) + (d.battery && d.battery.charging ? " ⚡" : ""))
     }
     if (keyboard) parts.push("Backlight " + (backlightOn(keyboard) ? "on" : "off") + " (right-click)")
