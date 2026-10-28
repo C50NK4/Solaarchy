@@ -166,6 +166,11 @@ Item {
           readonly property real fraction: modelData.battery ? Math.max(0, Math.min(1, modelData.battery.level / 100)) : 0
           readonly property bool hasBacklight: !!modelData.backlight
           readonly property bool lightOn: content.w.backlightOn(modelData)
+          readonly property var led: modelData.led
+          readonly property bool hasLed: !!modelData.led
+          readonly property bool ledOn: content.w.ledControlOn(modelData)
+          readonly property var ledZones: modelData.led && Array.isArray(modelData.led.zones)
+            ? modelData.led.zones : []
           readonly property real labelsGap: Style.space(8)
           width: parent.width
           spacing: Style.space(7)
@@ -294,6 +299,74 @@ Item {
                 alwaysRunToEnd: true
                 NumberAnimation { to: 0.55; duration: 900; easing.type: Easing.InOutSine }
                 NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+              }
+            }
+          }
+
+          // LED zones: the master LED Control switch, then per zone its
+          // label, current effect and a cycler through the effects the
+          // firmware advertises — all written through `solaar config`.
+          Row {
+            width: parent.width
+            visible: deviceItem.hasLed
+            spacing: Style.space(6)
+
+            PanelActionButton {
+              id: ledControlBtn
+              fontSize: Style.font.body
+              iconText: deviceItem.ledOn ? "✦" : "✧"
+              foreground: deviceItem.ledOn ? content.view.fg : content.view.dim
+              hoverColor: content.view.fg
+              fontFamily: content.view.fontFamily
+              enabled: !content.w.ledBusy && deviceItem.modelData.online
+              hasCursor: content.view.hasCursorOn("ledcontrol:" + deviceItem.modelData.id)
+              tooltipText: content.w.ledBusyFor(deviceItem.modelData)
+                ? "Switching LED control…"
+                : "LED control " + (deviceItem.ledOn ? "on" : "off") + ": click to turn "
+                  + (deviceItem.ledOn ? "off" : "on")
+              onClicked: content.w.toggleLedControl(deviceItem.modelData)
+              onHovered: function(h) { content.view.hoverAction("ledcontrol:" + deviceItem.modelData.id, h) }
+            }
+
+            Repeater {
+              model: deviceItem.ledZones
+
+              Row {
+                spacing: Style.space(2)
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: modelData.label ? modelData.label + " " : ""
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: content.view.dim
+                  font.family: content.view.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: deviceItem.ledZoneEffect(deviceItem.modelData, modelData.location) || "—"
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: content.view.fg
+                  font.family: content.view.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                PanelActionButton {
+                  fontSize: Style.font.body
+                  iconText: "↻"
+                  foreground: content.view.fg
+                  hoverColor: content.view.fg
+                  fontFamily: content.view.fontFamily
+                  enabled: !content.w.ledBusy && deviceItem.modelData.online
+                  hasCursor: content.view.hasCursorOn("ledzone:" + deviceItem.modelData.id + ":" + modelData.location)
+                  tooltipText: content.w.ledBusyFor(deviceItem.modelData)
+                    ? "Changing the " + (modelData.label || "LED") + " effect…"
+                    : (modelData.label || "LED") + ": click to change the effect ("
+                      + (deviceItem.ledZoneEffect(deviceItem.modelData, modelData.location) || "—") + ")"
+                  onClicked: content.w.cycleLedEffect(deviceItem.modelData, modelData.location)
+                  onHovered: function(h) { content.view.hoverAction("ledzone:" + deviceItem.modelData.id + ":" + modelData.location, h) }
+                }
               }
             }
           }

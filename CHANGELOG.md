@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+
+- Devices with per-zone LED effects (Logitech G mice such as the G403) get
+  their zones in the panel: a master switch for LED Control, and per zone its
+  label, its current effect and a cycler that walks the effects the firmware
+  advertises (Disabled, Static, Cycle, Breathe, …). Cycling sends the effect
+  with its defaults plus any param the current effect still sets, so a custom
+  Cycle period survives a trip away and back, and an effect's color falls
+  back to white instead of the black Solaar's own dialog would leave.
+- The switches write through `solaar config`, so the running Solaar GUI
+  records the change and re-applies it when the device wakes.
+
 ## 1.0.3
 
 - A Bluetooth device read before it has a real serial no longer leaves ghost

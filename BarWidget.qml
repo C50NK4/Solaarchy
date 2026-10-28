@@ -14,11 +14,13 @@ import "icons.js" as Icons
 // Everything goes through Solaar, which grants hidraw access with its own
 // udev rule, so this plugin adds no udev rule, no system service and no
 // hand-rolled HID++ writes:
-//   - solaarchy-status.py reads battery and backlight with Solaar's library
+//   - solaarchy-status.py reads battery, backlight and LED state with
+//     Solaar's library
 //   - solaarchy-monitor.py, a listen-only child of the shell, reports devices
 //     connecting and disconnecting, and receivers coming and going
-//   - the backlight switch runs `solaar config`, which hands the change to a
-//     running Solaar GUI so it is saved and re-applied when the keyboard wakes
+//   - the backlight and LED switches run `solaar config`, which hands the
+//     change to a running Solaar GUI so it is saved and re-applied when the
+//     device wakes
 BarWidget {
   id: root
   moduleName: "io.github.c50nk4.solaarchy"
@@ -140,10 +142,17 @@ BarWidget {
   // Device id -> 0/1 while a backlight switch to off/on is in flight
   // (optimistic UI); empty when idle.
   property var pendingBacklight: ({})
+  // Device id -> 0/1 while the LED Control switch is in flight (optimistic
+  // UI); empty when idle.
+  property var pendingLedControl: ({})
+  // "device id:zone location" -> effectId while a zone effect cycle is in
+  // flight (optimistic UI); empty when idle.
+  property var pendingLedEffect: ({})
   property bool refreshQueued: false
 
   readonly property bool refreshing: statusProc.running
   readonly property bool backlightBusy: backlightProc.running
+  readonly property bool ledBusy: ledProc.running
 
   // Right-clicking the bar icon toggles this device. Prefer one that is
   // online: the same keyboard can stay paired to a receiver while it is
@@ -285,10 +294,20 @@ BarWidget {
     if (!backlightProc.running && !refreshQueued) pendingBacklight = ({})
   }
 
+  // The LED Control switch and the zone cyclers share one process, so settle
+  // both pending maps together, under the same no-newer-answer rule.
+  function settleLed() {
+    if (!ledProc.running && !refreshQueued) {
+      pendingLedControl = ({})
+      pendingLedEffect = ({})
+    }
+  }
+
   function applyStatus(raw) {
     // Settle on every finished read, failed ones included, so a failed read
     // can't leave the switch stuck on a state that was never confirmed.
     settleBacklight()
+    settleLed()
 
     var lines = String(raw || "").trim().split("\n")
     var doc = null
@@ -361,6 +380,7 @@ BarWidget {
       if (old) {
         if (!d.battery && old.battery) { d.battery = old.battery; d.stale = true }
         if (!d.backlight && old.backlight) d.backlight = old.backlight
+        if (!d.led && old.led) d.led = old.led
       }
       merged.push(d)
     }
@@ -542,6 +562,96 @@ BarWidget {
     return backlightProc.running && !!device && pendingBacklight[device.id] !== undefined
   }
 
+  function ledControlOn(device) {
+    if (!device || !device.led) return false
+    var pending = pendingLedControl[device.id]
+    return pending !== undefined ? pending === 1 : !!device.led.control
+  }
+
+  function ledZone(device, location) {
+    if (!device || !device.led || !Array.isArray(device.led.zones)) return null
+    for (var i = 0; i < device.led.zones.length; i++)
+      if (device.led.zones[i].location === location) return device.led.zones[i]
+    return null
+  }
+
+  // The effect a zone is on, or the one a cycler just requested while its
+  // write is in flight (optimistic), so the label flips with the click.
+  function ledZoneEffect(device, location) {
+    if (device) {
+      var pending = pendingLedEffect[device.id + ":" + location]
+      if (pending !== undefined) {
+        var entry = ledEffectEntry(device, location, pending)
+        if (entry && entry.name) return entry.name
+      }
+    }
+    var zone = ledZone(device, location)
+    return zone ? zone.effect : null
+  }
+
+  function ledEffectEntry(device, location, effectId) {
+    var zone = ledZone(device, location)
+    if (!zone || !Array.isArray(zone.effects)) return null
+    for (var i = 0; i < zone.effects.length; i++)
+      if (zone.effects[i].id === effectId) return zone.effects[i]
+    return null
+  }
+
+  function ledBusyFor(device) {
+    if (!ledProc.running || !device) return false
+    if (pendingLedControl[device.id] !== undefined) return true
+    // pendingLedEffect keys are "id:location", so a plain index never hits.
+    var prefix = device.id + ":"
+    for (var key in pendingLedEffect)
+      if (key.indexOf(prefix) === 0) return true
+    return false
+  }
+
+  function toggleLedControl(device) {
+    if (!device || !device.led || ledProc.running) return
+    var target = ledControlOn(device) ? 0 : 1
+    var next = Object.assign({}, pendingLedControl)
+    next[device.id] = target
+    pendingLedControl = next
+    actionError = ""
+    ledProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+      solaarDeviceArg(device), "led_control", target === 1 ? "true" : "false"]
+    ledProc.running = true
+  }
+
+  // Cycle the zone to the next effect in the list its firmware advertises,
+  // sending the effect's id with its defaults, then the params the current
+  // effect already sets where the new one has them, so cycling back keeps a
+  // user's tuning (a custom Cycle period survives a trip to Static and home).
+  // A color param that no source gives a value for becomes white: Solaar's
+  // LEDEffectSetting.to_bytes() would fill it with 0, which is black.
+  function cycleLedEffect(device, location) {
+    if (!device || ledProc.running) return
+    var zone = ledZone(device, location)
+    if (!zone || !Array.isArray(zone.effects) || zone.effects.length === 0) return
+    var order = []
+    for (var i = 0; i < zone.effects.length; i++) order.push(zone.effects[i].id)
+    var nextId = order[(order.indexOf(zone.effectId) + 1) % order.length]
+    var entry = ledEffectEntry(device, location, nextId)
+    var params = {}
+    if (entry) {
+      for (var p in entry.defaults || {}) params[p] = entry.defaults[p]
+      var names = entry.params || []
+      for (var k in zone.params || {})
+        if (names.indexOf(k) >= 0) params[k] = zone.params[k]
+      if (names.indexOf("color") >= 0 && !(params.color > 0)) params.color = 16777215
+    }
+    var pending = Object.assign({}, pendingLedEffect)
+    pending[device.id + ":" + location] = nextId
+    pendingLedEffect = pending
+    actionError = ""
+    var yaml = "ID: " + nextId
+    for (var q in params) yaml += ", " + q + ": " + params[q]
+    ledProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+      solaarDeviceArg(device), "led_zone_" + location, "!LEDEffectSetting {" + yaml + "}"]
+    ledProc.running = true
+  }
+
   // `solaar config` matches a serial, a receiver slot 1..6, or a device
   // name. A receiver pairing's serial is our id. A direct Bluetooth or USB
   // node reports the same unit id, but its Solaar serial is empty, so the
@@ -711,6 +821,7 @@ BarWidget {
       statusProc.running = false
       root.lastError = "Timed out reading devices"
       root.settleBacklight()
+      root.settleLed()
     }
   }
 
@@ -769,6 +880,31 @@ BarWidget {
       backlightProc.running = false
       root.pendingBacklight = ({})
       root.actionError = "Timed out switching the backlight"
+    }
+  }
+
+  // The LED Control switch and the zone cyclers share this one process: a
+  // second click is dropped while the first write is still in flight.
+  Process {
+    id: ledProc
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.pendingLedControl = ({})
+        root.pendingLedEffect = ({})
+        root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not change the LED settings"
+      }
+      root.refresh()
+    }
+  }
+
+  Timer {
+    interval: 20000
+    running: ledProc.running
+    onTriggered: {
+      ledProc.running = false
+      root.pendingLedControl = ({})
+      root.pendingLedEffect = ({})
+      root.actionError = "Timed out changing the LED settings"
     }
   }
 
