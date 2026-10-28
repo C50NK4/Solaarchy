@@ -148,6 +148,9 @@ BarWidget {
   // "device id:zone location" -> effectId while a zone effect cycle is in
   // flight (optimistic UI); empty when idle.
   property var pendingLedEffect: ({})
+  // "device id:zone location" -> color int while a zone color change is in
+  // flight (optimistic UI); empty when idle.
+  property var pendingLedColor: ({})
   property bool refreshQueued: false
 
   readonly property bool refreshing: statusProc.running
@@ -300,8 +303,8 @@ BarWidget {
   // on its own deferred-save timer), so a read that arrives before the lag
   // has elapsed reports the old effect and must not clear the optimistic
   // label. Confirmation is per device: drop the pending control when the
-  // read reports the value we asked for, and each pending zone when its
-  // effect does.
+  // read reports the value we asked for, each pending zone when its effect
+  // does, and each pending color when its zone's color param does.
   function confirmLed(device) {
     if (!device) return
     var pending = pendingLedControl[device.id]
@@ -311,7 +314,8 @@ BarWidget {
       delete next[device.id]
       pendingLedControl = next
     }
-    // pendingLedEffect keys are "id:location"; recover the location.
+    // pendingLedEffect and pendingLedColor keys are "id:location"; recover
+    // the location.
     var prefix = String(device.id) + ":"
     for (var key in pendingLedEffect) {
       if (key.indexOf(prefix) !== 0) continue
@@ -320,6 +324,17 @@ BarWidget {
         var rest = Object.assign({}, pendingLedEffect)
         delete rest[key]
         pendingLedEffect = rest
+      }
+    }
+    // A color write keeps the zone's effect and changes only its color
+    // param, so it confirms on the read reporting that color on that zone.
+    for (var key in pendingLedColor) {
+      if (key.indexOf(prefix) !== 0) continue
+      var zone = ledZone(device, parseInt(key.slice(prefix.length), 10))
+      if (zone && zone.params && zone.params.color === pendingLedColor[key]) {
+        var rest = Object.assign({}, pendingLedColor)
+        delete rest[key]
+        pendingLedColor = rest
       }
     }
   }
@@ -331,6 +346,7 @@ BarWidget {
     if (ledProc.running) return
     pendingLedControl = ({})
     pendingLedEffect = ({})
+    pendingLedColor = ({})
   }
 
   function applyStatus(raw) {
@@ -664,12 +680,94 @@ BarWidget {
     return ledZoneEffect(device, device.led.zones[0].location)
   }
 
+  // The effect entry the linked cycler points at (first zone, pending-
+  // aware), or null when the device has no LED zone. The panel uses it to
+  // decide whether the linked effect carries a color param at all.
+  function ledLinkedEntry(device) {
+    if (!device || !device.led || !isList(device.led.zones) || device.led.zones.length === 0)
+      return null
+    var ref = device.led.zones[0]
+    return ledEffectEntry(device, ref.location, ledZoneEffectId(device, ref.location))
+  }
+
+  // A zone's color, pending-aware: while a color write is in flight the
+  // cache the status script reads still reports the old color, so the
+  // slider runs off the optimistic value, like the cycler runs off its id.
+  // -1 when the zone's effect carries no color param (or the read has none).
+  function ledZoneColor(device, location) {
+    var pending = pendingLedColor[device.id + ":" + location]
+    if (pending !== undefined) return pending
+    var zone = ledZone(device, location)
+    if (!zone || !zone.params || typeof zone.params.color !== "number") return -1
+    return zone.params.color
+  }
+
+  // The hue (0..360) the color slider rests at while idle: the reference
+  // zone's color, or -1 when the linked effect carries no color param
+  // (Cycle, Disabled, ...), which is when the slider stays hidden — the
+  // effect entry must both exist and accept "color", a Cycle entry has no
+  // color to rest on even though it is a real entry. A gray color (white,
+  // black) has no hue of its own and rests at red, the track's left edge.
+  function ledHue(device) {
+    if (!device || !device.led) return -1
+    var entry = ledLinkedEntry(device)
+    if (!entry || (entry.params || []).indexOf("color") < 0) return -1
+    var color = ledZoneColor(device, device.led.zones[0].location)
+    if (color < 0) return 0
+    var hue = rgbToHue(color)
+    return hue < 0 ? 0 : hue
+  }
+
+  // 0..360 hue -> 0xRRGGBB int at full saturation and brightness: Solaar's
+  // color param is an RGB int, and a hue-only slider means "a color", not a
+  // tint of one, so both stay 1.
+  function hueToRgb(h) {
+    h = ((h % 360) + 360) % 360
+    var x = 1 - Math.abs((h / 60) % 2 - 1)
+    var r = 0, g = 0, b = 0
+    if (h < 60) { r = 1; g = x }
+    else if (h < 120) { r = x; g = 1 }
+    else if (h < 180) { g = 1; b = x }
+    else if (h < 240) { g = x; b = 1 }
+    else if (h < 300) { r = x; b = 1 }
+    else { r = 1; b = x }
+    return Math.round(r * 255) * 65536 + Math.round(g * 255) * 256 + Math.round(b * 255)
+  }
+
+  // hueToRgb as a "#RRGGBB" string for QML's color properties: they do not
+  // accept a raw int — the binding fails silently and the knob stays black.
+  function hueToColor(h) {
+    var rgb = hueToRgb(h)
+    function hex(n) { return (n < 16 ? "0" : "") + n.toString(16) }
+    return "#" + hex(rgb >> 16) + hex((rgb >> 8) & 0xff) + hex(rgb & 0xff)
+  }
+
+  // 0xRRGGBB int -> hue 0..360; -1 for a gray (white, black) that carries
+  // no hue.
+  function rgbToHue(rgb) {
+    var r = Math.floor(rgb / 65536) / 255
+    var g = Math.floor((rgb % 65536) / 256) / 255
+    var b = (rgb % 256) / 255
+    var max = Math.max(r, g, b)
+    var min = Math.min(r, g, b)
+    var d = max - min
+    if (d === 0) return -1
+    var h
+    if (max === r) h = 60 * (((g - b) / d + 6) % 6)
+    else if (max === g) h = 60 * ((b - r) / d + 2)
+    else h = 60 * ((r - g) / d + 4)
+    return (h + 360) % 360
+  }
+
   function ledBusyFor(device) {
     if (!ledProc.running || !device) return false
     if (pendingLedControl[device.id] !== undefined) return true
-    // pendingLedEffect keys are "id:location", so a plain index never hits.
+    // pendingLedEffect and pendingLedColor keys are "id:location", so a
+    // plain index never hits.
     var prefix = device.id + ":"
     for (var key in pendingLedEffect)
+      if (key.indexOf(prefix) === 0) return true
+    for (var key in pendingLedColor)
       if (key.indexOf(prefix) === 0) return true
     return false
   }
@@ -745,6 +843,44 @@ BarWidget {
     actionError = ""
     // The chain is the shell command itself (the args are quoted above),
     // not positional parameters as in the single-setting calls.
+    ledProc.command = ["/bin/sh", "-c", cmds.join(" && ")]
+    ledProc.running = true
+  }
+
+  // Move every zone that carries a color param to the given color, keeping
+  // each zone's own (pending-aware) effect and its other params: one slider
+  // drives the whole device, like the cycler, and each zone is written its
+  // current effect id + params with color replaced. The zone keeps its
+  // effect, so no pending effect is set — only the color — and a zone whose
+  // effect somehow has no color param is skipped.
+  function setLedColor(device, color) {
+    if (!device || !device.led || ledProc.running) return
+    var zones = device.led.zones
+    if (!isList(zones) || zones.length === 0) return
+    var arg = shellQuote(solaarDeviceArg(device))
+    var zonePrefix = device.led.zoneSettingPrefix || "led_zone_"
+    var cmds = []
+    var pending = Object.assign({}, pendingLedColor)
+    for (var z = 0; z < zones.length; z++) {
+      var zone = zones[z]
+      var effectId = ledZoneEffectId(device, zone.location)
+      var entry = ledEffectEntry(device, zone.location, effectId)
+      if (!entry || (entry.params || []).indexOf("color") < 0) continue
+      var params = {}
+      for (var p in entry.defaults || {}) params[p] = entry.defaults[p]
+      var names = entry.params || []
+      for (var k in zone.params || {})
+        if (names.indexOf(k) >= 0) params[k] = zone.params[k]
+      params.color = color
+      var yaml = "ID: " + effectId
+      for (var q in params) yaml += ", " + q + ": " + params[q]
+      cmds.push("solaar config " + arg + " " + zonePrefix + zone.location +
+        " '!LEDEffectSetting {" + yaml + "}'")
+      pending[device.id + ":" + zone.location] = color
+    }
+    if (cmds.length === 0) return
+    pendingLedColor = pending
+    actionError = ""
     ledProc.command = ["/bin/sh", "-c", cmds.join(" && ")]
     ledProc.running = true
   }
@@ -1019,6 +1155,7 @@ BarWidget {
       ledProc.running = false
       root.pendingLedControl = ({})
       root.pendingLedEffect = ({})
+      root.pendingLedColor = ({})
       root.actionError = "Timed out changing the LED settings"
     }
   }
@@ -1046,6 +1183,7 @@ BarWidget {
       if (root.ledBusy) return  // a newer write owns the pending state now
       var hadPending = Object.keys(root.pendingLedControl).length > 0
                      || Object.keys(root.pendingLedEffect).length > 0
+                      || Object.keys(root.pendingLedColor).length > 0
       if (!hadPending) return  // already confirmed by a read: nothing to do
       root.settleLed()
       root.refresh()
