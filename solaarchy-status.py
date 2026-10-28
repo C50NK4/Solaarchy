@@ -199,26 +199,42 @@ def _led(dev):
         persister = dev.persister
         if not isinstance(persister, dict):
             return None
-        control = persister.get("led_control")
-        if control is None:
+        # Two feature families persist LED state with the same value class
+        # and zone layout but different setting names: COLOR_LED_EFFECTS
+        # (G403 and kin) caches led_control/led_zone_N, RGB_EFFECTS (G502,
+        # G700/G900 Lightspeed and the newer RGB mice) caches
+        # rgb_control/rgb_zone_N. Probe in the same order Solaar's own
+        # dev.led_effects prefers the features, and report the names so the
+        # QML side writes the family this cache actually uses.
+        family = None
+        for control_key, zone_prefix in (("led_control", "led_zone_"),
+                                         ("rgb_control", "rgb_zone_")):
+            if persister.get(control_key) is not None:
+                family = (control_key, zone_prefix)
+                break
+        if family is None:
             return None  # no LED state cached for this device
+        control_key, zone_prefix = family
+        control = persister[control_key]
     except Exception:
         return None
 
     zones = []
     zone_settings = []
     for key, value in persister.items():
-        if not key.startswith("led_zone_"):
+        if not key.startswith(zone_prefix):
             continue
         try:
-            location = int(key[len("led_zone_"):])
+            location = int(key[len(zone_prefix):])
         except ValueError:
             continue
         if not isinstance(value, hidpp20.LEDEffectSetting):
             continue
         zone_settings.append((location, value))
     if not zone_settings:
-        return {"control": bool(control), "zones": zones}
+        return {"control": bool(control), "zones": zones,
+                "controlSetting": control_key,
+                "zoneSettingPrefix": zone_prefix}
 
     # Zone capabilities: which effects each location can do. dev.led_effects
     # is lazy and caches into dev._led_effects (cleared by _forget_features).
@@ -285,7 +301,9 @@ def _led(dev):
                 "effects": effects,
             }
         )
-    return {"control": bool(control), "zones": zones}
+    return {"control": bool(control), "zones": zones,
+            "controlSetting": control_key,
+            "zoneSettingPrefix": zone_prefix}
 
 
 def _online(dev):

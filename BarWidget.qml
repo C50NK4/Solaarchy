@@ -681,8 +681,12 @@ BarWidget {
     next[device.id] = target
     pendingLedControl = next
     actionError = ""
+    // controlSetting comes from the status JSON; it is "rgb_control" on the
+    // newer RGB_EFFECTS mice (G502/G700/G900 family), "led_control" on the
+    // G403-style COLOR_LED_EFFECTS ones.
     ledProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
-      solaarDeviceArg(device), "led_control", target === 1 ? "true" : "false"]
+      solaarDeviceArg(device), device.led.controlSetting || "led_control",
+      target === 1 ? "true" : "false"]
     ledProc.running = true
   }
 
@@ -712,6 +716,12 @@ BarWidget {
     // chained in one shell: one process, one pending state, one confirm
     // cycle. && so an unreachable device skips the remaining writes.
     var arg = shellQuote(solaarDeviceArg(device))
+    // The zone setting name differs per feature family: led_zone_N on the
+    // G403-style COLOR_LED_EFFECTS mice, rgb_zone_N on the newer RGB_EFFECTS
+    // ones; the status script reports which one this device's cache uses.
+    // The value tag stays !LEDEffectSetting either way — Solaar persists both
+    // families with the same class.
+    var zonePrefix = device.led.zoneSettingPrefix || "led_zone_"
     var cmds = []
     var pending = Object.assign({}, pendingLedEffect)
     for (var z = 0; z < zones.length; z++) {
@@ -727,7 +737,7 @@ BarWidget {
       }
       var yaml = "ID: " + nextId
       for (var q in params) yaml += ", " + q + ": " + params[q]
-      cmds.push("solaar config " + arg + " led_zone_" + zone.location +
+      cmds.push("solaar config " + arg + " " + zonePrefix + zone.location +
         " '!LEDEffectSetting {" + yaml + "}'")
       pending[device.id + ":" + zone.location] = nextId
     }
