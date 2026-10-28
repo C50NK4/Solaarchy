@@ -48,8 +48,8 @@ Panel {
         if (w.shown[j].backlight) list.push("backlight:" + w.shown[j].id)
         if (w.shown[j].led) {
           list.push("ledcontrol:" + w.shown[j].id)
-          for (var z = 0; z < w.shown[j].led.zones.length; z++)
-            list.push("ledzone:" + w.shown[j].id + ":" + w.shown[j].led.zones[z].location)
+          // One linked cycler per device, not one per zone.
+          list.push("ledzone:" + w.shown[j].id)
         }
       }
     }
@@ -106,14 +106,14 @@ Panel {
       if (chosen) w.toggleLedControl(chosen)
     }
     else if (name.indexOf("ledzone:") === 0) {
-      var parts = name.slice(8).split(":")
-      var wanted = parts[0]
+      // The linked cycler: one action per device, every zone moves together.
+      var wanted = name.slice(8)
       var chosen = null
       for (var i = 0; i < w.shown.length; i++) {
         if (String(w.shown[i].id) !== wanted || !w.shown[i].led) continue
         if (!chosen || w.shown[i].online) chosen = w.shown[i]
       }
-      if (chosen) w.cycleLedEffect(chosen, parseInt(parts[1], 10))
+      if (chosen) w.cycleLedEffect(chosen)
     }
   }
 

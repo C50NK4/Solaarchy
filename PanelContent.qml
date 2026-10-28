@@ -169,8 +169,6 @@ Item {
           readonly property var led: modelData.led
           readonly property bool hasLed: !!modelData.led
           readonly property bool ledOn: content.w.ledControlOn(modelData)
-          readonly property var ledZones: modelData.led && Array.isArray(modelData.led.zones)
-            ? modelData.led.zones : []
           readonly property real labelsGap: Style.space(8)
           width: parent.width
           spacing: Style.space(7)
@@ -303,9 +301,9 @@ Item {
             }
           }
 
-          // LED zones: the master LED Control switch, then per zone its
-          // label, current effect and a cycler through the effects the
-          // firmware advertises — all written through `solaar config`.
+          // LED control: the master switch, then one linked cycler that
+          // moves every zone to the same next effect, so Primary and Logo
+          // stay in lock-step — all written through `solaar config`.
           Row {
             width: parent.width
             visible: deviceItem.hasLed
@@ -314,7 +312,9 @@ Item {
             PanelActionButton {
               id: ledControlBtn
               fontSize: Style.font.body
-              iconText: deviceItem.ledOn ? "✦" : "✧"
+              // Same bulb glyphs as the keyboard backlight row above, so the
+              // two light switches read as one family.
+              iconText: deviceItem.ledOn ? "󰛨" : "󰌶"
               foreground: deviceItem.ledOn ? content.view.fg : content.view.dim
               hoverColor: content.view.fg
               fontFamily: content.view.fontFamily
@@ -328,45 +328,44 @@ Item {
               onHovered: function(h) { content.view.hoverAction("ledcontrol:" + deviceItem.modelData.id, h) }
             }
 
-            Repeater {
-              model: deviceItem.ledZones
+            // The one linked effect button: the label is the first zone's
+            // effect (the reference the cycler runs off), and every click
+            // moves all zones to that same next effect.
+            Row {
+              spacing: Style.space(2)
 
-              Row {
-                spacing: Style.space(2)
+              Text {
+                textFormat: Text.PlainText
+                text: "LED "
+                anchors.verticalCenter: parent.verticalCenter
+                color: content.view.dim
+                font.family: content.view.fontFamily
+                font.pixelSize: Style.font.caption
+              }
 
-                Text {
-                  textFormat: Text.PlainText
-                  text: modelData.label ? modelData.label + " " : ""
-                  anchors.verticalCenter: parent.verticalCenter
-                  color: content.view.dim
-                  font.family: content.view.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
+              Text {
+                textFormat: Text.PlainText
+                text: content.w.ledLinkedEffect(deviceItem.modelData) || "—"
+                anchors.verticalCenter: parent.verticalCenter
+                color: content.view.fg
+                font.family: content.view.fontFamily
+                font.pixelSize: Style.font.caption
+              }
 
-                Text {
-                  textFormat: Text.PlainText
-                  text: deviceItem.ledZoneEffect(deviceItem.modelData, modelData.location) || "—"
-                  anchors.verticalCenter: parent.verticalCenter
-                  color: content.view.fg
-                  font.family: content.view.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-
-                PanelActionButton {
-                  fontSize: Style.font.body
-                  iconText: "↻"
-                  foreground: content.view.fg
-                  hoverColor: content.view.fg
-                  fontFamily: content.view.fontFamily
-                  enabled: !content.w.ledBusy && deviceItem.modelData.online
-                  hasCursor: content.view.hasCursorOn("ledzone:" + deviceItem.modelData.id + ":" + modelData.location)
-                  tooltipText: content.w.ledBusyFor(deviceItem.modelData)
-                    ? "Changing the " + (modelData.label || "LED") + " effect…"
-                    : (modelData.label || "LED") + ": click to change the effect ("
-                      + (deviceItem.ledZoneEffect(deviceItem.modelData, modelData.location) || "—") + ")"
-                  onClicked: content.w.cycleLedEffect(deviceItem.modelData, modelData.location)
-                  onHovered: function(h) { content.view.hoverAction("ledzone:" + deviceItem.modelData.id + ":" + modelData.location, h) }
-                }
+              PanelActionButton {
+                fontSize: Style.font.body
+                iconText: "↻"
+                foreground: content.view.fg
+                hoverColor: content.view.fg
+                fontFamily: content.view.fontFamily
+                enabled: !content.w.ledBusy && deviceItem.modelData.online
+                hasCursor: content.view.hasCursorOn("ledzone:" + deviceItem.modelData.id)
+                tooltipText: content.w.ledBusyFor(deviceItem.modelData)
+                  ? "Changing the LED effect…"
+                  : "LED effect: click to change all zones ("
+                    + (content.w.ledLinkedEffect(deviceItem.modelData) || "—") + ")"
+                onClicked: content.w.cycleLedEffect(deviceItem.modelData)
+                onHovered: function(h) { content.view.hoverAction("ledzone:" + deviceItem.modelData.id, h) }
               }
             }
           }

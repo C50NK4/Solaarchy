@@ -605,8 +605,16 @@ BarWidget {
     return pending !== undefined ? pending === 1 : !!device.led.control
   }
 
+  // An array that crossed a Repeater's modelData boundary (the panel hands
+  // its model items straight into these functions) comes back as a QJSValue
+  // wrapper: Array.isArray() rejects it although .length and index access
+  // still work, so test the shape, not the constructor.
+  function isList(value) {
+    return value !== null && typeof value === "object" && typeof value.length === "number"
+  }
+
   function ledZone(device, location) {
-    if (!device || !device.led || !Array.isArray(device.led.zones)) return null
+    if (!device || !device.led || !isList(device.led.zones)) return null
     for (var i = 0; i < device.led.zones.length; i++)
       if (device.led.zones[i].location === location) return device.led.zones[i]
     return null
@@ -628,10 +636,32 @@ BarWidget {
 
   function ledEffectEntry(device, location, effectId) {
     var zone = ledZone(device, location)
-    if (!zone || !Array.isArray(zone.effects)) return null
+    if (!zone || !isList(zone.effects)) return null
     for (var i = 0; i < zone.effects.length; i++)
       if (zone.effects[i].id === effectId) return zone.effects[i]
     return null
+  }
+
+  // The id of the effect a zone is on, pending-aware: while a cycler write
+  // is in flight the cache the status script reads still reports the old
+  // effect, so any decision about what comes next must run off the
+  // optimistic id, not the confirmed one. Running off the confirmed id was
+  // the stuck-at-Breathe bug — a click inside the confirm window re-derived
+  // from the stale effect and re-requested the one just shown.
+  function ledZoneEffectId(device, location) {
+    var pending = pendingLedEffect[device.id + ":" + location]
+    if (pending !== undefined) return pending
+    var zone = ledZone(device, location)
+    return zone ? zone.effectId : -1
+  }
+
+  // The effect the linked cycler points at: the first zone's, since all
+  // zones move to the same effect on every click and the first one is the
+  // reference. A pair that somehow drifted apart re-syncs on the next click.
+  function ledLinkedEffect(device) {
+    if (!device || !device.led || !isList(device.led.zones) || device.led.zones.length === 0)
+      return null
+    return ledZoneEffect(device, device.led.zones[0].location)
   }
 
   function ledBusyFor(device) {
@@ -656,37 +686,65 @@ BarWidget {
     ledProc.running = true
   }
 
-  // Cycle the zone to the next effect in the list its firmware advertises,
-  // sending the effect's id with its defaults, then the params the current
-  // effect already sets where the new one has them, so cycling back keeps a
-  // user's tuning (a custom Cycle period survives a trip to Static and home).
-  // A color param that no source gives a value for becomes white: Solaar's
-  // LEDEffectSetting.to_bytes() would fill it with 0, which is black.
-  function cycleLedEffect(device, location) {
-    if (!device || ledProc.running) return
-    var zone = ledZone(device, location)
-    if (!zone || !Array.isArray(zone.effects) || zone.effects.length === 0) return
+  // Cycle every LED zone of the device to the next effect in the list the
+  // firmware advertises — one button drives all zones, and each zone moves
+  // to the same next effect, so a pair that drifted apart re-syncs on the
+  // first click. Each zone is sent the effect's id with its defaults, then
+  // the params the zone's current effect already sets where the new one has
+  // them, so cycling back keeps a user's tuning (a custom Cycle period
+  // survives a trip to Static and home). A color param that no source gives
+  // a value for becomes white: Solaar's LEDEffectSetting.to_bytes() would
+  // fill it with 0, which is black.
+  function cycleLedEffect(device) {
+    if (!device || !device.led || ledProc.running) return
+    var zones = device.led.zones
+    if (!isList(zones) || zones.length === 0) return
+    // The first zone is the reference: its effect decides which comes next.
+    var ref = zones[0]
+    if (!isList(ref.effects) || ref.effects.length === 0) return
     var order = []
-    for (var i = 0; i < zone.effects.length; i++) order.push(zone.effects[i].id)
-    var nextId = order[(order.indexOf(zone.effectId) + 1) % order.length]
-    var entry = ledEffectEntry(device, location, nextId)
-    var params = {}
-    if (entry) {
-      for (var p in entry.defaults || {}) params[p] = entry.defaults[p]
-      var names = entry.params || []
-      for (var k in zone.params || {})
-        if (names.indexOf(k) >= 0) params[k] = zone.params[k]
-      if (names.indexOf("color") >= 0 && !(params.color > 0)) params.color = 16777215
-    }
+    for (var i = 0; i < ref.effects.length; i++) order.push(ref.effects[i].id)
+    // Pending-aware: the label already shows the in-flight effect, so the
+    // next step must start where the user sees the cycler, or the list
+    // stops at the last entry instead of wrapping (the Breathe bug).
+    var nextId = order[(order.indexOf(ledZoneEffectId(device, ref.location)) + 1) % order.length]
+    // `solaar config` takes one setting per invocation, so the zones are
+    // chained in one shell: one process, one pending state, one confirm
+    // cycle. && so an unreachable device skips the remaining writes.
+    var arg = shellQuote(solaarDeviceArg(device))
+    var cmds = []
     var pending = Object.assign({}, pendingLedEffect)
-    pending[device.id + ":" + location] = nextId
+    for (var z = 0; z < zones.length; z++) {
+      var zone = zones[z]
+      var entry = ledEffectEntry(device, zone.location, nextId)
+      var params = {}
+      if (entry) {
+        for (var p in entry.defaults || {}) params[p] = entry.defaults[p]
+        var names = entry.params || []
+        for (var k in zone.params || {})
+          if (names.indexOf(k) >= 0) params[k] = zone.params[k]
+        if (names.indexOf("color") >= 0 && !(params.color > 0)) params.color = 16777215
+      }
+      var yaml = "ID: " + nextId
+      for (var q in params) yaml += ", " + q + ": " + params[q]
+      cmds.push("solaar config " + arg + " led_zone_" + zone.location +
+        " '!LEDEffectSetting {" + yaml + "}'")
+      pending[device.id + ":" + zone.location] = nextId
+    }
     pendingLedEffect = pending
     actionError = ""
-    var yaml = "ID: " + nextId
-    for (var q in params) yaml += ", " + q + ": " + params[q]
-    ledProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
-      solaarDeviceArg(device), "led_zone_" + location, "!LEDEffectSetting {" + yaml + "}"]
+    // The chain is the shell command itself (the args are quoted above),
+    // not positional parameters as in the single-setting calls.
+    ledProc.command = ["/bin/sh", "-c", cmds.join(" && ")]
     ledProc.running = true
+  }
+
+  // Single-quote for the chained `sh -c` command: the device arg is a name
+  // with spaces on a directly connected node, and the whole chain is one
+  // shell string, so the per-argument quoting of the single-setting calls
+  // no longer applies.
+  function shellQuote(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
 
   // `solaar config` matches a serial, a receiver slot 1..6, or a device
