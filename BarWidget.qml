@@ -294,20 +294,51 @@ BarWidget {
     if (!backlightProc.running && !refreshQueued) pendingBacklight = ({})
   }
 
-  // The LED Control switch and the zone cyclers share one process, so settle
-  // both pending maps together, under the same no-newer-answer rule.
-  function settleLed() {
-    if (!ledProc.running && !refreshQueued) {
-      pendingLedControl = ({})
-      pendingLedEffect = ({})
+  // A read can only confirm pending LED state, never settle it: the cache
+  // the status script reads lags a successful write by ~5 s (with the Solaar
+  // GUI running, `solaar config` writes the device and the GUI persists it
+  // on its own deferred-save timer), so a read that arrives before the lag
+  // has elapsed reports the old effect and must not clear the optimistic
+  // label. Confirmation is per device: drop the pending control when the
+  // read reports the value we asked for, and each pending zone when its
+  // effect does.
+  function confirmLed(device) {
+    if (!device) return
+    var pending = pendingLedControl[device.id]
+    if (pending !== undefined
+        && device.led && device.led.control === (pending === 1)) {
+      var next = Object.assign({}, pendingLedControl)
+      delete next[device.id]
+      pendingLedControl = next
+    }
+    // pendingLedEffect keys are "id:location"; recover the location.
+    var prefix = String(device.id) + ":"
+    for (var key in pendingLedEffect) {
+      if (key.indexOf(prefix) !== 0) continue
+      var zone = ledZone(device, parseInt(key.slice(prefix.length), 10))
+      if (zone && zone.effectId === pendingLedEffect[key]) {
+        var rest = Object.assign({}, pendingLedEffect)
+        delete rest[key]
+        pendingLedEffect = rest
+      }
     }
   }
 
+  // Force-settle every pending LED state, no read involved: the belt for a
+  // write that never confirms. Guarded so a belt that fires while a newer
+  // write is in flight can't clear that write's optimistic state.
+  function settleLed() {
+    if (ledProc.running) return
+    pendingLedControl = ({})
+    pendingLedEffect = ({})
+  }
+
   function applyStatus(raw) {
-    // Settle on every finished read, failed ones included, so a failed read
-    // can't leave the switch stuck on a state that was never confirmed.
+    // Settle the optimistic backlight state on every finished read, failed
+    // ones included, so a failed read can't leave the switch stuck on a
+    // state that was never confirmed. The LED state is only ever confirmed
+    // by a read (see confirmLed), never settled by one.
     settleBacklight()
-    settleLed()
 
     var lines = String(raw || "").trim().split("\n")
     var doc = null
@@ -415,6 +446,12 @@ BarWidget {
       merged.push(markStale(Object.assign({}, gone)))
     }
     if (forgotten) lowNotified = Object.assign({}, lowNotified)
+
+    // Now that the merge is final, let each device's freshest reading
+    // confirm any pending LED state of its; a stale or not-yet-persisted
+    // reading simply doesn't match and leaves the optimistic label in
+    // place.
+    for (var ci = 0; ci < merged.length; ci++) confirmLed(merged[ci])
 
     // Same idea for receivers: don't drop one this read didn't list while a
     // device that belongs to it is still being shown (stale or not).
@@ -889,11 +926,21 @@ BarWidget {
     id: ledProc
     onExited: function(exitCode) {
       if (exitCode !== 0) {
-        root.pendingLedControl = ({})
-        root.pendingLedEffect = ({})
+        // The write failed: nothing will ever confirm the optimistic state,
+        // so settle it now and re-read to show the truth.
+        ledConfirmTimer.stop()
+        ledSettleTimer.stop()
+        root.settleLed()
         root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not change the LED settings"
+        root.refresh()
+        return
       }
-      root.refresh()
+      // A successful write is not visible in the cache the status script
+      // reads for ~5 s, so a refresh now would only report the old effect.
+      // Let the timers below fetch the first read that can confirm the
+      // optimistic state, and belt it if no read ever does.
+      ledConfirmTimer.restart()
+      ledSettleTimer.restart()
     }
   }
 
@@ -905,6 +952,35 @@ BarWidget {
       root.pendingLedControl = ({})
       root.pendingLedEffect = ({})
       root.actionError = "Timed out changing the LED settings"
+    }
+  }
+
+  // The first read that can confirm the optimistic LED state: the write
+  // time plus the ~5 s persistence lag of the running Solaar GUI, plus
+  // margin. When it arrives, confirmLed drops the pending entries and the
+  // label simply stops being optimistic — no visible change, because the
+  // write succeeded.
+  Timer {
+    id: ledConfirmTimer
+    interval: 8000
+    repeat: false
+    onTriggered: root.refresh()
+  }
+
+  // Belt for a write that never confirms: the device was asleep, the write
+  // was lost, or the Solaar GUI never persisted the change. Force-settle
+  // the optimistic state and re-read so the panel shows the truth.
+  Timer {
+    id: ledSettleTimer
+    interval: 16000
+    repeat: false
+    onTriggered: {
+      if (root.ledBusy) return  // a newer write owns the pending state now
+      var hadPending = Object.keys(root.pendingLedControl).length > 0
+                     || Object.keys(root.pendingLedEffect).length > 0
+      if (!hadPending) return  // already confirmed by a read: nothing to do
+      root.settleLed()
+      root.refresh()
     }
   }
 
