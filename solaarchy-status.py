@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Solaarchy: print battery and backlight state of Logitech HID++ devices as JSON.
+"""Solaarchy: print battery, backlight and LED state of Logitech HID++ devices as JSON.
 
 Read-only: it goes through Solaar's own library (python-solaar, official repos)
 and the hidraw access Solaar's udev rule already grants. No device setting is
-changed and Solaar's configuration file is never written; backlight changes go
-through `solaar config` so the running Solaar GUI records them and does not
-undo them when the keyboard wakes.
+changed and Solaar's configuration file is never written; backlight and LED
+changes go through `solaar config` so the running Solaar GUI records them and
+does not undo them when the keyboard wakes.
 
 Output: {"receivers": [...], "devices": [...], "listed": [...], "warnings": [...]},
 or {"error": "..."} when nothing at all could be read. "listed" holds the hidraw
@@ -185,6 +185,127 @@ def _backlight(dev):
     return result
 
 
+def _led(dev):
+    # The persisted LED settings are the state source, read from Solaar's own
+    # configuration cache (dev.persister, the same file `solaar config` and
+    # the running Solaar GUI write): the zones' live state is not readable on
+    # this hardware, so the settings are what the GUI re-applies and what the
+    # user sees as "current". dev.persister is a plain dict per device.
+    #
+    # The device's zone/effect capabilities (dev.led_effects) are only asked
+    # for when the cache actually shows LED zones, so a device without LED
+    # support sends no HID++ traffic for it.
+    try:
+        persister = dev.persister
+        if not isinstance(persister, dict):
+            return None
+        # Two feature families persist LED state with the same value class
+        # and zone layout but different setting names: COLOR_LED_EFFECTS
+        # (G403 and kin) caches led_control/led_zone_N, RGB_EFFECTS (G502,
+        # G700/G900 Lightspeed and the newer RGB mice) caches
+        # rgb_control/rgb_zone_N. Probe in the same order Solaar's own
+        # dev.led_effects prefers the features, and report the names so the
+        # QML side writes the family this cache actually uses.
+        family = None
+        for control_key, zone_prefix in (("led_control", "led_zone_"),
+                                         ("rgb_control", "rgb_zone_")):
+            if persister.get(control_key) is not None:
+                family = (control_key, zone_prefix)
+                break
+        if family is None:
+            return None  # no LED state cached for this device
+        control_key, zone_prefix = family
+        control = persister[control_key]
+    except Exception:
+        return None
+
+    zones = []
+    zone_settings = []
+    for key, value in persister.items():
+        if not key.startswith(zone_prefix):
+            continue
+        try:
+            location = int(key[len(zone_prefix):])
+        except ValueError:
+            continue
+        if not isinstance(value, hidpp20.LEDEffectSetting):
+            continue
+        zone_settings.append((location, value))
+    if not zone_settings:
+        return {"control": bool(control), "zones": zones,
+                "controlSetting": control_key,
+                "zoneSettingPrefix": zone_prefix}
+
+    # Zone capabilities: which effects each location can do. dev.led_effects
+    # is lazy and caches into dev._led_effects (cleared by _forget_features).
+    capabilities = None
+    try:
+        if dev.online and dev.protocol >= 2.0:
+            capabilities = dev.led_effects
+    except Exception:
+        pass
+
+    for location, setting in sorted(zone_settings):
+        effect_id = int(setting.ID) if setting.ID is not None else None
+        label = None
+        effects = None
+        zone = None
+        if capabilities is not None:
+            for z in capabilities.zones:
+                try:
+                    if int(z.location) == location:
+                        zone = z
+                        break
+                except Exception:
+                    continue
+        if zone is not None:
+            # Each supported effect with its name, its full param set, and the
+            # defaults Solaar's LEDEffectSetting.to_bytes() would otherwise
+            # fill with 0: the QML side sends id + defaults (keeping any param
+            # the current effect already sets) when cycling, e.g. Cycle needs
+            # period 5000/intensity 100, and a color param with no value
+            # anywhere would light the zone black.
+            effects = []
+            for e in zone.effects:
+                eid = int(e.ID)
+                # Newer firmware can advertise effects the library table does
+                # not know; report them anyway, nameless and paramless.
+                entry = hidpp20.LEDEffects.get(eid)
+                effects.append(
+                    {
+                        "id": eid,
+                        "name": str(entry[0]) if entry is not None else None,
+                        "params": [str(p) for p in entry[1]] if entry is not None else [],
+                        "defaults": {p: int(v) for p, v in entry[2].items()}
+                        if entry is not None and len(entry) > 2
+                        else {},
+                    }
+                )
+        params = None
+        if effect_id is not None:
+            effect_entry = hidpp20.LEDEffects.get(effect_id)
+            if effect_entry:
+                params = {p: int(getattr(setting, p, 0)) for p in effect_entry[1]}
+        zones.append(
+            {
+                "location": location,
+                # NamedInts look up by int; an unknown location comes back None.
+                "label": str(hidpp20.LEDZoneLocations[location])
+                if hidpp20.LEDZoneLocations[location]
+                else f"zone {location}",
+                "effectId": effect_id,
+                "effect": str(hidpp20.LEDEffects[effect_id][0])
+                if effect_id is not None and effect_id in hidpp20.LEDEffects
+                else None,
+                "params": params,
+                "effects": effects,
+            }
+        )
+    return {"control": bool(control), "zones": zones,
+            "controlSetting": control_key,
+            "zoneSettingPrefix": zone_prefix}
+
+
 def _online(dev):
     # Without a listener for receiver notifications, Solaar marks every paired
     # device online. Ping, as `solaar show` does, so a device that is switched
@@ -220,6 +341,7 @@ def _consistent(dev):
 def _forget_features(dev):
     dev.features = hidpp20.FeaturesArray(dev)
     dev._backlight = None
+    dev._led_effects = None
 
 
 def _safe(fn, fallback=None):
@@ -277,17 +399,18 @@ def _device(dev, receiver_name, path):
         "online": online,
         "battery": None,
         "backlight": None,
+        "led": None,
     }
     if online:
         for attempt in range(2):
             name, full_name, kind = _identity(dev)
-            battery, backlight = _battery(dev), _backlight(dev)
+            battery, backlight, led = _battery(dev), _backlight(dev), _led(dev)
             # codename/name/kind reach HID++2.0 devices through the same
             # feature_request() primitive, so they're checked by the same
             # cross-process consistency audit, not trusted separately.
             if _safe(lambda: _consistent(dev), False):
                 entry["name"], entry["fullName"], entry["kind"] = name, full_name, kind
-                entry["battery"], entry["backlight"] = battery, backlight
+                entry["battery"], entry["backlight"], entry["led"] = battery, backlight, led
                 break
             _forget_features(dev)
             time.sleep(0.3)

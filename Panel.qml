@@ -44,8 +44,14 @@ Panel {
     }
     var list = ["icons", "refresh", "solaar"]
     if (w) {
-      for (var j = 0; j < w.shown.length; j++)
+      for (var j = 0; j < w.shown.length; j++) {
         if (w.shown[j].backlight) list.push("backlight:" + w.shown[j].id)
+        if (w.shown[j].led) {
+          list.push("ledcontrol:" + w.shown[j].id)
+          // One linked cycler per device, not one per zone.
+          list.push("ledzone:" + w.shown[j].id)
+        }
+      }
     }
     return list
   }
@@ -89,6 +95,25 @@ Panel {
         if (!chosen || w.shown[i].online) chosen = w.shown[i]
       }
       if (chosen) w.toggleBacklight(chosen)
+    }
+    else if (name.indexOf("ledcontrol:") === 0) {
+      var wanted = name.slice(11)
+      var chosen = null
+      for (var i = 0; i < w.shown.length; i++) {
+        if (String(w.shown[i].id) !== wanted || !w.shown[i].led) continue
+        if (!chosen || w.shown[i].online) chosen = w.shown[i]
+      }
+      if (chosen) w.toggleLedControl(chosen)
+    }
+    else if (name.indexOf("ledzone:") === 0) {
+      // The linked cycler: one action per device, every zone moves together.
+      var wanted = name.slice(8)
+      var chosen = null
+      for (var i = 0; i < w.shown.length; i++) {
+        if (String(w.shown[i].id) !== wanted || !w.shown[i].led) continue
+        if (!chosen || w.shown[i].online) chosen = w.shown[i]
+      }
+      if (chosen) w.cycleLedEffect(chosen)
     }
   }
 

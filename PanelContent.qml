@@ -166,6 +166,14 @@ Item {
           readonly property real fraction: modelData.battery ? Math.max(0, Math.min(1, modelData.battery.level / 100)) : 0
           readonly property bool hasBacklight: !!modelData.backlight
           readonly property bool lightOn: content.w.backlightOn(modelData)
+          readonly property var led: modelData.led
+          readonly property bool hasLed: !!modelData.led
+          readonly property bool ledOn: content.w.ledControlOn(modelData)
+          // Hue the color slider rests at: -1 when the linked effect carries
+          // no color param (Cycle, Disabled), which is when the slider stays
+          // hidden. Pending-aware through ledHue, so it tracks the in-flight
+          // color like the cycler label tracks the in-flight effect.
+          readonly property real colorHue: content.w.ledHue(modelData)
           readonly property real labelsGap: Style.space(8)
           width: parent.width
           spacing: Style.space(7)
@@ -294,6 +302,154 @@ Item {
                 alwaysRunToEnd: true
                 NumberAnimation { to: 0.55; duration: 900; easing.type: Easing.InOutSine }
                 NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+              }
+            }
+          }
+
+          // LED control: the master switch, then one linked cycler that
+          // moves every zone to the same next effect, so Primary and Logo
+          // stay in lock-step, then a hue slider for the effects that carry
+          // a color param (Static, Breathe) — all written through
+          // `solaar config`.
+          Item {
+            id: ledRow
+            width: parent.width
+            visible: deviceItem.hasLed
+            implicitHeight: Math.max(ledButtonsRow.implicitHeight,
+                                    deviceItem.colorHue >= 0 ? ledColorSlider.implicitHeight : 0)
+
+            Row {
+              id: ledButtonsRow
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(6)
+
+              PanelActionButton {
+                id: ledControlBtn
+                fontSize: Style.font.body
+                // Same bulb glyphs as the keyboard backlight row above, so the
+                // two light switches read as one family.
+                iconText: deviceItem.ledOn ? "󰛨" : "󰌶"
+                foreground: deviceItem.ledOn ? content.view.fg : content.view.dim
+                hoverColor: content.view.fg
+                fontFamily: content.view.fontFamily
+                enabled: !content.w.ledBusy && deviceItem.modelData.online
+                hasCursor: content.view.hasCursorOn("ledcontrol:" + deviceItem.modelData.id)
+                tooltipText: content.w.ledBusyFor(deviceItem.modelData)
+                  ? "Switching LED control…"
+                  : "LED control " + (deviceItem.ledOn ? "on" : "off") + ": click to turn "
+                    + (deviceItem.ledOn ? "off" : "on")
+                onClicked: content.w.toggleLedControl(deviceItem.modelData)
+                onHovered: function(h) { content.view.hoverAction("ledcontrol:" + deviceItem.modelData.id, h) }
+              }
+
+              // The one linked effect button: the label is the first zone's
+              // effect (the reference the cycler runs off), and every click
+              // moves all zones to that same next effect.
+              Row {
+                spacing: Style.space(2)
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: "LED "
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: content.view.dim
+                  font.family: content.view.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: content.w.ledLinkedEffect(deviceItem.modelData) || "—"
+                  anchors.verticalCenter: parent.verticalCenter
+                  color: content.view.fg
+                  font.family: content.view.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                PanelActionButton {
+                  fontSize: Style.font.body
+                  iconText: "↻"
+                  foreground: content.view.fg
+                  hoverColor: content.view.fg
+                  fontFamily: content.view.fontFamily
+                  enabled: !content.w.ledBusy && deviceItem.modelData.online
+                  hasCursor: content.view.hasCursorOn("ledzone:" + deviceItem.modelData.id)
+                  tooltipText: content.w.ledBusyFor(deviceItem.modelData)
+                    ? "Changing the LED effect…"
+                    : "LED effect: click to change all zones ("
+                      + (content.w.ledLinkedEffect(deviceItem.modelData) || "—") + ")"
+                  onClicked: content.w.cycleLedEffect(deviceItem.modelData)
+                  onHovered: function(h) { content.view.hoverAction("ledzone:" + deviceItem.modelData.id, h) }
+                }
+              }
+            }
+
+            // The hue slider, the color-picker pattern: a rainbow spectrum
+            // track (red at both ends — hue 0 and 360 are the same color)
+            // with the knob painted the hue under it. Shown only while the
+            // linked effect carries a color param, so Static and Breathe get
+            // a color and Cycle and Disabled don't. The knob follows the hue
+            // while dragging; release commits it, and setLedColor sets the
+            // pending color before the slider snaps back, so the knob never
+            // jumps.
+            //
+            // Drawn with a Canvas of 1px hue strips, not a Gradient: on this
+            // Qt 6.12 build the gradient renders solid white — its stops are
+            // held by the QML objects (verified by reading stop.color back)
+            // but are lost before the fill is painted, and the docs' "a
+            // gradient without stops is solid white" is exactly what shows.
+            // Canvas paints are raster 2D and work fine. Painting from
+            // hueToColor itself keeps the knob equal to the track under it.
+            Rectangle {
+              id: ledHueTrack
+              visible: deviceItem.colorHue >= 0
+              anchors.left: ledColorSlider.left
+              anchors.right: ledColorSlider.right
+              anchors.verticalCenter: ledColorSlider.verticalCenter
+              height: ledColorSlider.trackHeight
+              radius: height / 2
+              clip: true
+              color: "transparent"
+              Canvas {
+                anchors.fill: parent
+                onWidthChanged: requestPaint()
+                onHeightChanged: requestPaint()
+                onPaint: {
+                  var ctx = getContext("2d")
+                  ctx.clearRect(0, 0, width, height)
+                  for (var x = 0; x < width; x++) {
+                    ctx.fillStyle = content.w.hueToColor(x / width * 360)
+                    ctx.fillRect(x, 0, 1, height)
+                  }
+                }
+              }
+            }
+
+            PanelSlider {
+              id: ledColorSlider
+              visible: deviceItem.colorHue >= 0
+              anchors.left: ledButtonsRow.right
+              anchors.leftMargin: Style.space(6)
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              minimum: 0
+              maximum: 360
+              step: 5
+              integer: true
+              value: Math.max(0, deviceItem.colorHue)
+              // The rainbow track above does the drawing; the slider's own
+              // track and fill stay transparent so the spectrum shows
+              // through, and only the knob is painted.
+              trackColor: "transparent"
+              fillColor: "transparent"
+              knobColor: content.w.hueToColor(ledColorSlider.liveValue)
+              onReleased: function(hue) {
+                if (!deviceItem.modelData.online || content.w.ledBusy) {
+                  ledColorSlider.liveValue = ledColorSlider.value  // rejected: snap back
+                  return
+                }
+                content.w.setLedColor(deviceItem.modelData, content.w.hueToRgb(Math.round(hue)))
               }
             }
           }
