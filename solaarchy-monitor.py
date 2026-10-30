@@ -4,6 +4,7 @@
 Prints one JSON line per event and never exits on its own:
   {"event": "link", "path": "/dev/hidraw3", "number": 2, "online": false}
   {"event": "hotplug"}   a HID++ receiver or directly connected device came or went
+  {"event": "ready"}     listening; sent once at startup
 
 Listen-only: hidraw nodes are opened O_RDONLY and nothing is ever written, so
 no device is woken and the running Solaar GUI is unaffected (every open
@@ -84,6 +85,7 @@ def main():
     monitor.filter_by(subsystem="hidraw")
     monitor.start()
     sync()
+    emit({"event": "ready"})
 
     while True:
         readable, _, _ = select.select([monitor.fileno(), *fds], [], [])

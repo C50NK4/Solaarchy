@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.4
+
+- The "Live updates are broken" message clears as soon as the live monitor
+  recovers, for example after Solaar is installed. The monitor now reports once
+  that it is listening, instead of staying silent until a device links or
+  unlinks.
+
+Thanks to Ramon Cardena (ramoncardena) for the report and the fix.
+
 ## 1.0.3
 
 - A Bluetooth device read before it has a real serial no longer leaves ghost
