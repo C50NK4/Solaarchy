@@ -16,11 +16,12 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   comes back
 - Keyboard backlight on/off: the bulb next to each keyboard's name, or
   right-click the bar icon
-- **Circadian**, a built-in add-on: every backlit keyboard lights up at civil
-  dusk and goes dark at civil dawn, worked out offline for where you are
-- A drawer per device: Circadian for that keyboard, hide the device, and what
-  the device can do, grouped by capability as room for
-  [add-ons](addons/ADDONS.md)
+- **A drawer per device**, grouped by what the device can do: Circadian for a
+  keyboard, Hide this device, and room for add-ons
+- **[Add-ons](#add-ons):** built in, curated, or any you install or write
+  yourself, each with its own switch in Settings
+- **Circadian**, the first built-in add-on: every backlit keyboard lights up at
+  civil dusk and goes dark at civil dawn, worked out offline for where you are
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
 - An **auto** bar icon that shows the keyboard, the mouse, or both, whichever
@@ -164,7 +165,7 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `notifyConnection`     | `false`  | Notify when a device has had no link for 5 minutes, and when it comes back         |
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
 | `hideWhenDisconnected` | `true`   | Hide the widget while no receiver is plugged in and no Logitech device is connected or paired over Bluetooth |
-| `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
+| `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see [Circadian](#circadian) |
 | `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
 | `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
 | `rainbowMockup`        | `false`  | Built-in experimental add-on: a greyed colour mock-up in lit devices' drawers. Changes nothing |
@@ -173,62 +174,6 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 Connected and disconnected notifications wait 5 minutes because Solaarchy
 can't tell a device that fell asleep from one that was switched off; a
 reconnect is only announced for a device whose disconnect was.
-
-### Circadian
-
-Circadian is a built-in add-on, on by default; Settings switches it off.
-Every backlit keyboard is switched on at civil dusk and off at civil dawn, when the sun is
-6° below the horizon: the time it gets too dark to see the keys, a while after
-sunset and before sunrise. The keyboard still decides by itself when to light
-up, as when you switch it on by hand. Circadian only makes sure it is switched
-on when you need it, for example when you sit down before dawn.
-
-Its page (the chevron next to its switch in Settings, or in a keyboard's
-drawer) draws today as a 24-hour strip, says whether it is daylight or dark
-outside and until when, and sets the timing and the location.
-
-- A switch by hand, with the bulb or a right-click, holds until the next dusk
-  or dawn.
-- A keyboard's drawer can skip it: that keyboard keeps whatever light you
-  give it while the rest follow.
-- Dusk and dawn are worked out locally, for the first of these that is set:
-  `circadianLocation`, then Omarchy's weather location when it has
-  coordinates (pick one of the weather panel's suggestions, or run
-  `omarchy-weather-location --set <name> <lat,lon>`), then the reference city
-  of your timezone (Vienna for `Europe/Vienna`). Dusk moves with latitude as
-  well as longitude, so set a location if you live far from that city.
-- In polar night or white nights, when the sun stays below or above −6° all
-  day, the backlight just stays on or off.
-- The bulb's tooltip shows today's switch times.
-
-```sh
-omarchy bar set io.github.c50nk4.solaarchy circadian false --json   # on by default
-omarchy bar set io.github.c50nk4.solaarchy circadianOffset 30 --json
-omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
-```
-
-### Add-ons
-
-Model-specific controls, such as haptics or lighting effects, are add-ons:
-ordinary Omarchy plugins with a `solaarchy-addon.json` that puts their
-controls into a device's drawer, or opens their own panel for that device.
-[addons/ADDONS.md](addons/ADDONS.md) shows how to write one, and
-[addons/skills/solaarchy-addon](addons/skills/solaarchy-addon/SKILL.md) is a
-Claude Code skill that walks through it. Settings lists them in three groups:
-
-- **Built-in add-ons** come with Solaarchy, each in its own folder under
-  `addons/`: Circadian, and Rainbow LED, an experimental mock-up that is off
-  by default.
-- **Curated add-ons** have been reviewed for Solaarchy. They are listed even
-  before you install them, with links to their repository and plugins.omarchy.org
-  page.
-- **Other add-ons** are any other installed plugin with a
-  `solaarchy-addon.json`. They show up by themselves and work the same, but
-  nobody has reviewed them.
-
-An installed add-on's switch turns its plugin on or off in Omarchy, as
-`omarchy plugin enable` and `disable` do. An add-on that is installed but
-disabled gets nothing loaded.
 
 ### Bar icons
 
@@ -281,6 +226,77 @@ Notes:
   trademark on your own desktop is your call; Solaarchy neither ships nor
   fetches it.
 
+## Add-ons
+
+Solaarchy itself stays small: battery, connections and the keyboard backlight.
+Everything else is an add-on, with its controls in a device's drawer or in a
+panel of its own. Settings lists them in three groups, each add-on with its own
+switch:
+
+- **Built in:** they come with Solaarchy, each in its own folder under
+  `addons/`. [Circadian](#circadian) is on by default. Rainbow LED, an
+  experimental greyed mock-up that changes nothing, is off.
+- **Curated:** reviewed for Solaarchy, and listed with links to their
+  repository and plugins.omarchy.org page even before you install them.
+  Haptics for the MX Master 4 is the first, still in development.
+- **Other:** any other installed Omarchy plugin with a `solaarchy-addon.json`.
+  They show up by themselves and work the same, but nobody has reviewed them.
+
+An installed add-on's switch turns its plugin on or off in Omarchy, as
+`omarchy plugin enable` and `disable` do. An add-on that is installed but
+disabled gets nothing loaded.
+
+### Circadian
+
+Circadian is a built-in add-on, on by default; Settings switches it off.
+Every backlit keyboard is switched on at civil dusk and off at civil dawn, when
+the sun is 6° below the horizon: the time it gets too dark to see the keys, a
+while after sunset and before sunrise. The keyboard still decides by itself when to light
+up, as when you switch it on by hand. Circadian only makes sure it is switched
+on when you need it, for example when you sit down before dawn.
+
+Its page (the chevron next to its switch in Settings, or in a keyboard's
+drawer) draws today as a 24-hour strip, says whether it is daylight or dark
+outside and until when, and sets the timing and the location.
+
+- A switch by hand, with the bulb or a right-click, holds until the next dusk
+  or dawn.
+- A keyboard's drawer can skip it: that keyboard keeps whatever light you
+  give it while the rest follow.
+- Dusk and dawn are worked out locally, for the first of these that is set:
+  `circadianLocation`, then Omarchy's weather location when it has
+  coordinates (pick one of the weather panel's suggestions, or run
+  `omarchy-weather-location --set <name> <lat,lon>`), then the reference city
+  of your timezone (Vienna for `Europe/Vienna`). Dusk moves with latitude as
+  well as longitude, so set a location if you live far from that city.
+- In polar night or white nights, when the sun stays below or above −6° all
+  day, the backlight just stays on or off.
+- The bulb's tooltip shows today's switch times.
+
+```sh
+omarchy bar set io.github.c50nk4.solaarchy circadian false --json   # on by default
+omarchy bar set io.github.c50nk4.solaarchy circadianOffset 30 --json
+omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
+```
+
+### Write your own
+
+An add-on is an ordinary Omarchy plugin with one extra file,
+`solaarchy-addon.json`, next to its manifest. [addons/ADDONS.md](addons/ADDONS.md)
+describes the API: what a drawer gets, how to reach the device through Solaar,
+and the lock every add-on shares.
+[addons/skills/solaarchy-addon](addons/skills/solaarchy-addon/SKILL.md) is a
+[Claude Code](https://claude.com/claude-code) skill that scaffolds an add-on,
+checks it, and walks you through testing it. Link it once:
+
+```sh
+ln -s ~/.config/omarchy/plugins/io.github.c50nk4.solaarchy/addons/skills/solaarchy-addon ~/.claude/skills/
+```
+
+To get yours curated, [open an issue](https://github.com/C50NK4/Solaarchy/issues)
+with its plugin id, its repository and, if it has one, its plugins.omarchy.org
+page.
+
 ## Supported hardware
 
 Developed and used daily with:
@@ -327,13 +343,12 @@ Solaarchy does:
 - **Bluetooth pairings:** each read also asks BlueZ, read-only over the system
   bus (`busctl … GetManagedObjects`), how many Logitech devices are paired, so
   the widget stays while a Bluetooth keyboard sleeps.
-- **Changing things:** only when you ask. Toggling the backlight runs
-  `solaar config <device> backlight …`; with Circadian on, the same command
-  runs once at dusk and once at dawn. `addons/circadian/twilight.py` works out
-  those times offline, from your settings, Omarchy's weather location or your
-  timezone. Changing a setting in
-  the panel, or picking a bar icon, runs `omarchy bar set …`. Opening Solaar
-  runs `uwsm-app -- solaar`.
+- **Changing things:** the backlight when you toggle it, and with Circadian
+  on (the default) once at dusk and once at dawn; both run
+  `solaar config <device> backlight …`. `addons/circadian/twilight.py` works
+  out those times offline, from your settings, Omarchy's weather location or
+  your timezone. Changing a setting in the panel, or picking a bar icon, runs
+  `omarchy bar set …`. Opening Solaar runs `uwsm-app -- solaar`.
 - **Add-ons:** built-in ones load from Solaarchy's own `addons/` folder.
   When the panel opens, `solaarchy-addons.py` looks for
   `solaarchy-addon.json` in your installed plugins and asks the shell which
@@ -343,8 +358,8 @@ Solaarchy does:
   with `xdg-open`.
 - **Files:** last readings are saved to
   `~/.local/state/omarchy/solaarchy.json`, and which keyboards Circadian
-  switched last to `~/.local/state/omarchy/solaarchy-circadian.json`. Settings live in
-  `~/.config/omarchy/shell.json` like every bar widget's.
+  switched last to `~/.local/state/omarchy/solaarchy-circadian.json`.
+  Settings live in `~/.config/omarchy/shell.json` like every bar widget's.
 - **Notifications:** sent with `notify-send -a Solaarchy`.
 - **Privileges:** none. No sudo, no udev rule or system service of its own;
   hardware access comes from Solaar's udev rule.
