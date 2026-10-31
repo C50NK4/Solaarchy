@@ -14,7 +14,7 @@ Item {
   property var host
   property var addon
 
-  readonly property bool on: host.boolSetting(addon.setting, false)
+  readonly property bool on: host.addonOn(addon)
   readonly property int offset: host.intSetting("circadianOffset", 0, -120, 120)
   readonly property string location: String(host.cfg("circadianLocation", "")).trim()
 

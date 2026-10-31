@@ -91,18 +91,22 @@ BarWidget {
   readonly property var currentIcon: resolveIcon(chosenIcon)
   onSettingIconChanged: iconOverride = ""
   onSettingCustomIconChanged: iconOverride = ""
-  // What auto draws: the keyboard or the mouse when only that kind is listed,
-  // else both (combo), also when neither is. Asleep devices count, so the
-  // icon doesn't change each time one sleeps.
+  // What auto draws: the keyboard or the mouse when only that kind is online,
+  // else both (combo). With none online it goes by every listed device, so
+  // switching the last one off doesn't draw both.
   readonly property string autoIcon: {
-    var keyboards = false
-    var mice = false
-    for (var i = 0; i < shown.length; i++) {
-      var kind = shown[i].kind
-      if (kind === "keyboard" || kind === "numpad") keyboards = true
-      else if (kind === "mouse" || kind === "trackball" || kind === "touchpad") mice = true
+    var kinds = function(list) {
+      var found = { "keyboard": false, "mouse": false }
+      for (var i = 0; i < list.length; i++) {
+        var kind = list[i].kind
+        if (kind === "keyboard" || kind === "numpad") found.keyboard = true
+        else if (kind === "mouse" || kind === "trackball" || kind === "touchpad") found.mouse = true
+      }
+      return found
     }
-    return keyboards && !mice ? "keyboard" : (mice && !keyboards ? "mouse" : "combo")
+    var found = kinds(shown.filter(function(d) { return d.online }))
+    if (!found.keyboard && !found.mouse) found = kinds(shown)
+    return found.keyboard && !found.mouse ? "keyboard" : (found.mouse && !found.keyboard ? "mouse" : "combo")
   }
 
   // Custom bar icons: every SVG in the icon folder, in name order. Solaarchy
@@ -871,6 +875,8 @@ BarWidget {
       "description": spec.description || "",
       "experimental": spec.experimental === true,
       "setting": spec.setting,
+      // On until switched off, when its spec says so.
+      "default": spec.default === true,
       "drawer": spec.drawer ? dir + "/" + spec.drawer : "",
       "page": spec.page ? dir + "/" + spec.page : "",
       "panel": false
@@ -899,7 +905,7 @@ BarWidget {
   }
 
   // A built-in by its own setting, an installed add-on by Omarchy's plugin switch.
-  function addonOn(addon) { return addon.builtin ? boolSetting(addon.setting, false) : !!addon.enabled }
+  function addonOn(addon) { return addon.builtin ? boolSetting(addon.setting, addon.default) : !!addon.enabled }
 
   // Through the service when it has one: Circadian applies at once.
   function setBuiltinOn(addon, on) {

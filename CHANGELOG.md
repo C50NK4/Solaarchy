@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
 
 - **Circadian**, a built-in add-on: every backlit keyboard can switch on at
   civil dusk and off at civil dawn, so it lights up when you sit down before
@@ -8,7 +8,7 @@
   with today as a 24-hour strip, whether it is daylight or dark outside and
   until when, the timing in minutes, and the location: Omarchy's weather
   location, else your timezone's city, or coordinates of your own. A
-  keyboard's drawer can skip it. Off by default.
+  keyboard's drawer can skip it. On by default; Settings switches it off.
 - **A drawer per device**, behind a chevron at the end of its row:
   - Circadian for that keyboard (follow or skip)
   - Hide this device
@@ -28,12 +28,13 @@
   Settings lists the built-in ones, curated ones (with links, even before
   they're installed) and any other installed ones, each with its own switch.
   Built-in add-ons live in `addons/`: Circadian, and Rainbow LED, an
-  experimental mock-up that is off by default. See addons/ADDONS.md. Haptics
+  experimental mock-up that is off by default. See addons/ADDONS.md, and
+  addons/skills/solaarchy-addon, a Claude Code skill for writing one. Haptics
   for the MX Master 4 is the first curated add-on, in development.
 - **Auto bar icon:** `auto` and `auto-outline` draw the keyboard, the mouse,
-  or both, after the devices the panel lists (asleep ones included, hidden
-  ones not). They lead the picker's device rows, which now have four
-  columns.
+  or both, after the devices online now (every listed one when none is), so
+  the icon changes as a device switches off or comes back. They lead the
+  picker's device rows, which now have four columns.
 - The widget hides whenever nothing Logitech is here: no receiver, no device
   connected, none paired over Bluetooth. Before, a device seen once kept it
   in the bar.

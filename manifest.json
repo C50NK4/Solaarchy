@@ -30,7 +30,7 @@
       "notifyLowBattery": true,
       "notifyCritical": true,
       "notifyConnection": false,
-      "circadian": false,
+      "circadian": true,
       "circadianOffset": 0,
       "circadianLocation": "",
       "rainbowMockup": false,
@@ -121,8 +121,8 @@
         "key": "circadian",
         "type": "boolean",
         "label": "Circadian",
-        "description": "Built-in add-on: turn every backlit keyboard's light on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn. A keyboard's drawer in the panel can skip it.",
-        "defaultValue": false
+        "description": "Built-in add-on, on by default: turn every backlit keyboard's light on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn. A keyboard's drawer in the panel can skip it.",
+        "defaultValue": true
       },
       {
         "key": "circadianOffset",

@@ -175,5 +175,7 @@ setting in `manifest.json`). Models to copy from:
 - `addons/rainbow/`: a drawer only, off by default, experimental
 
 Then run `omarchy plugin validate .` in the repository, restart the shell,
-and check Settings, a drawer, its page, and the keys. A new setting's default
-is `false`, and a built-in must not switch anything on by itself.
+and check Settings, a drawer, its page, and the keys. Its default goes in two
+places, `default` in its solaarchy-addon.json and the manifest's `defaults`
+and `schema`. Keep it off unless it should be on for everyone, as Circadian
+is.

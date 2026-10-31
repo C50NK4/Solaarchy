@@ -9,9 +9,9 @@ install, update, enable and disable like any other, plus one file,
 Solaarchy's Settings lists add-ons in three groups:
 
 - **Built-in add-ons** come with Solaarchy, one folder each next to this
-  file, and switch on in Settings: Circadian (the keyboard light by civil
-  twilight) and Rainbow LED (an experimental mock-up, off by default). See
-  [Built-in add-ons](#built-in-add-ons).
+  file, and switch on and off in Settings: Circadian (the keyboard light by
+  civil twilight, on by default) and Rainbow LED (an experimental mock-up,
+  off by default). See [Built-in add-ons](#built-in-add-ons).
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
   plugins.omarchy.org page, and shown greyed in the drawers they fit.
@@ -207,6 +207,7 @@ Each has the same `solaarchy-addon.json`, with these keys on top:
 | Key | Meaning |
 |---|---|
 | `setting` | Required. Its on/off key in Solaarchy's own settings, such as `circadian`. |
+| `default` | `true` to start on until it is switched off. Missing means off. |
 | `description` | Its caption in Settings, unless its service gives one. |
 | `experimental` | `true` keeps it out of the drawers while it is off. |
 | `service` | Optional. A QML file whose root is an `Item`, created once at start. It runs for as long as the widget does. |
@@ -264,19 +265,20 @@ Solaarchy asks a service for these, when it has them:
 2. Add `<id>` to `builtinIds` in `BarWidget.qml`. The folders are read in that
    order at start.
 3. Add the setting to `manifest.json`, in `defaults` and in `schema`, with
-   `false` as its default.
+   the same default as its `default` key. Keep it off unless it should be on
+   for everyone, as Circadian is.
 4. Restart the shell (`omarchy restart shell`). QML is only read at start.
 
 ## Writing one with Claude Code
 
-`.claude/skills/solaarchy-addon/` in Solaarchy's repository is a
+`skills/solaarchy-addon/`, next to this file, is a
 [Claude Code](https://claude.com/claude-code) skill for writing an add-on: the
-files, the API above, testing, and the rules. Claude Code picks it up by
-itself inside this repository. To use it in your own add-on's repository, link
-it into `~/.claude/skills/`:
+files, the API above, testing, and the rules. Link it into `~/.claude/skills/`
+once, and Claude Code finds it from its next session on, in your add-on's own
+repository too:
 
 ```sh
-ln -s ~/.config/omarchy/plugins/io.github.c50nk4.solaarchy/.claude/skills/solaarchy-addon ~/.claude/skills/
+ln -s ~/.config/omarchy/plugins/io.github.c50nk4.solaarchy/addons/skills/solaarchy-addon ~/.claude/skills/
 ```
 
 ## Curated add-ons

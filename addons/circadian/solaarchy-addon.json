@@ -6,6 +6,7 @@
   "icon": "󰖔",
   "description": "Keyboard light on at dusk, off at dawn, by civil twilight where you are.",
   "setting": "circadian",
+  "default": true,
   "service": "Service.qml",
   "page": "Page.qml",
   "drawer": "Drawer.qml"

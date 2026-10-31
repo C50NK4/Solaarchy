@@ -143,7 +143,7 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `notifyConnection`     | `false`  | Notify when a device has had no link for 5 minutes, and when it comes back         |
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
 | `hideWhenDisconnected` | `true`   | Hide the widget while no receiver is plugged in and no Logitech device is connected or paired over Bluetooth |
-| `circadian`            | `false`  | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
+| `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
 | `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
 | `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
 | `rainbowMockup`        | `false`  | Built-in experimental add-on: a greyed colour mock-up in lit devices' drawers. Changes nothing |
@@ -155,8 +155,8 @@ reconnect is only announced for a device whose disconnect was.
 
 ### Circadian
 
-Circadian is a built-in add-on: Settings switches it on. Then every backlit
-keyboard is switched on at civil dusk and off at civil dawn, when the sun is
+Circadian is a built-in add-on, on by default; Settings switches it off.
+Every backlit keyboard is switched on at civil dusk and off at civil dawn, when the sun is
 6° below the horizon: the time it gets too dark to see the keys, a while after
 sunset and before sunrise. The keyboard still decides by itself when to light
 up, as when you switch it on by hand. Circadian only makes sure it is switched
@@ -181,7 +181,7 @@ outside and until when, and sets the timing and the location.
 - The bulb's tooltip shows today's switch times.
 
 ```sh
-omarchy bar set io.github.c50nk4.solaarchy circadian true --json
+omarchy bar set io.github.c50nk4.solaarchy circadian false --json   # on by default
 omarchy bar set io.github.c50nk4.solaarchy circadianOffset 30 --json
 omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
 ```
@@ -191,8 +191,9 @@ omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
 Model-specific controls, such as haptics or lighting effects, are add-ons:
 ordinary Omarchy plugins with a `solaarchy-addon.json` that puts their
 controls into a device's drawer, or opens their own panel for that device.
-[addons/ADDONS.md](addons/ADDONS.md) shows how to write one. Settings lists
-them in three groups:
+[addons/ADDONS.md](addons/ADDONS.md) shows how to write one, and
+[addons/skills/solaarchy-addon](addons/skills/solaarchy-addon/SKILL.md) is a
+Claude Code skill that walks through it. Settings lists them in three groups:
 
 - **Built-in add-ons** come with Solaarchy, each in its own folder under
   `addons/`: Circadian, and Rainbow LED, an experimental mock-up that is off
@@ -213,7 +214,7 @@ disabled gets nothing loaded.
 | Icons                                                              | Values                                                               |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
 | Solaar's own icon (default)                                        | `solaar`                                                             |
-| Auto: the keyboard, the mouse, or both, after the devices listed   | `auto`, `auto-outline`                                               |
+| Auto: the keyboard, the mouse, or both, after the devices online   | `auto`, `auto-outline`                                               |
 | Mouse, filled and outline                                          | `mouse`, `mouse-outline`                                             |
 | Keyboard, filled and outline                                       | `keyboard`, `keyboard-outline`                                       |
 | Keyboard + mouse, filled and outline                               | `combo`, `combo-outline`                                             |
