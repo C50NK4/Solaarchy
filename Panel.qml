@@ -29,6 +29,8 @@ Panel {
   property string backPage: "main"
   // The device whose drawer is open, by id; "" for none.
   property string drawerId: ""
+  // Settings' notification switches, folded away until asked for.
+  property bool notificationsOpen: false
 
   // Keyboard-cursor targets for the current page, in reading order.
   readonly property var actions: {
@@ -48,8 +50,10 @@ Panel {
       return picker
     }
     if (page === "settings") {
-      var settings = ["back", "dark-toggle", "dark-page", "blink-toggle", "notify-low", "low-minus", "low-plus",
-                      "notify-critical", "notify-connection", "hide-bar"]
+      var settings = ["back", "dark-toggle", "dark-page", "notify-more"]
+      if (notificationsOpen)
+        settings.push("notify-low", "low-minus", "low-plus", "notify-critical", "notify-connection")
+      settings.push("hide-bar")
       if (!w) return settings
       for (var h = 0; h < w.hiddenDevices.length; h++) settings.push("unhide:" + w.hiddenDevices[h].id)
       for (var c = 0; c < w.curatedAddons.length; c++) {
@@ -76,7 +80,6 @@ Panel {
         for (var s = 0; s < sections.length; s++) {
           if (sections[s].builtin) {
             if (w.darkHours) list.push("dark-own:" + d.id, "dark-page")
-            if (w.blink) list.push("blink:" + d.id)
           }
           for (var a = 0; a < sections[s].addons.length; a++)
             if (sections[s].addons[a].panel) list.push("addon:" + sections[s].addons[a].id + ":" + d.id)
@@ -173,8 +176,6 @@ Panel {
     else if (verb === "backlight") { if (device && device.backlight) w.toggleBacklight(device) }
     else if (verb === "drawer") toggleDrawer(arg)
     else if (verb === "dark-own") { if (device) w.setDeviceDarkHours(device, !w.darkHoursFor(device)) }
-    else if (verb === "blink") { if (device) w.setBlinking(device.id, !w.isBlinking(device)) }
-    else if (verb === "blink-toggle") w.saveSetting("blink", !w.blink)
     else if (verb === "link") w.openLink(arg)
     else if (verb === "addon-toggle") {
       var addon = w.installedAddon(arg)
@@ -195,6 +196,7 @@ Panel {
         if (w.addons[k].id === arg.slice(0, cut) && target) w.openAddonPanel(w.addons[k], target)
     }
     else if (verb === "dark-page") showPage("darkhours")
+    else if (verb === "notify-more") notificationsOpen = !notificationsOpen
     else if (verb === "dark-toggle") w.setDarkHours(!w.darkHours)
     else if (verb === "notify-low") w.saveSetting("notifyLowBattery", !w.notifyLowBattery)
     else if (verb === "notify-critical") w.saveSetting("notifyCritical", !w.notifyCritical)
@@ -226,6 +228,7 @@ Panel {
     if (!popoutSwitchClosing) {
       page = "main"
       drawerId = ""
+      notificationsOpen = false
     }
   }
 

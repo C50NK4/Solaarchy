@@ -537,27 +537,9 @@ Item {
             }
           }
 
-          OptionRow {
-            visible: section.modelData.builtin && content.w.blink
-            view: content.view
-            glyph: "󰉁"
-            label: "Blink"
-            caption: (content.w.isBlinking(drawer.device) ? "Blinking. " : "Just for fun. ")
-              + "Drains the battery faster."
-
-            ToggleSwitch {
-              anchors.verticalCenter: parent.verticalCenter
-              checked: content.w.isBlinking(drawer.device)
-              foreground: content.view.fg
-              hasCursor: content.view.hasCursorOn("blink:" + drawer.deviceId)
-              onToggled: content.view.runAction("blink:" + drawer.deviceId)
-              onHovered: function(h) { content.view.hoverAction("blink:" + drawer.deviceId, h) }
-            }
-          }
-
           MessageText {
-            visible: section.modelData.builtin && !content.w.darkHours && !content.w.blink
-            text: "Dark hours and Blink are built in, switched off in Settings."
+            visible: section.modelData.builtin && !content.w.darkHours
+            text: "Dark hours is built in, switched off in Settings."
           }
 
           Repeater {

@@ -9,8 +9,8 @@ install, update, enable and disable like any other, plus one file,
 Solaarchy's Settings lists add-ons in three groups:
 
 - **Built-in add-ons** come with Solaarchy and switch on in Settings: Dark
-  hours (backlight by civil twilight) and Blink (just for fun). They use
-  Solaarchy's own code, not this API.
+  hours (backlight by civil twilight). It uses Solaarchy's own code, not this
+  API.
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
   plugins.omarchy.org page, and shown greyed in the drawers they fit.

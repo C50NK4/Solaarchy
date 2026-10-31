@@ -62,35 +62,58 @@ Column {
         onHovered: function(h) { page.view.hoverAction("dark-page", h) }
       }
     }
-
-    OptionRow {
-      view: page.view
-      glyph: "󰉁"
-      label: "Blink"
-      caption: "Blinks a keyboard's light from its drawer, just for fun. Drains the battery."
-
-      ToggleSwitch {
-        anchors.verticalCenter: parent.verticalCenter
-        checked: page.w.blink
-        foreground: page.view.fg
-        hasCursor: page.view.hasCursorOn("blink-toggle")
-        onToggled: page.w.saveSetting("blink", !page.w.blink)
-        onHovered: function(h) { page.view.hoverAction("blink-toggle", h) }
-      }
-    }
   }
 
   Column {
     width: parent.width
     spacing: Style.space(10)
 
-    PanelSectionHeader {
-      text: "NOTIFICATIONS"
-      foreground: page.view.fg
-      fontFamily: page.view.fontFamily
+    // Collapsed by default: one summary line, the switches behind the chevron.
+    Item {
+      width: parent.width
+      implicitHeight: Math.max(notifyHeader.implicitHeight, notifyChevron.implicitHeight)
+
+      PanelSectionHeader {
+        id: notifyHeader
+        anchors.verticalCenter: parent.verticalCenter
+        text: "NOTIFICATIONS"
+        foreground: page.view.fg
+        fontFamily: page.view.fontFamily
+      }
+
+      PanelActionButton {
+        id: notifyChevron
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        iconText: page.view.notificationsOpen ? "󰅃" : "󰅀"
+        tooltipText: page.view.notificationsOpen ? "Hide the notification switches" : "Show the notification switches"
+        foreground: page.view.fg
+        fontFamily: page.view.fontFamily
+        hasCursor: page.view.hasCursorOn("notify-more")
+        onClicked: page.view.runAction("notify-more")
+        onHovered: function(h) { page.view.hoverAction("notify-more", h) }
+      }
+    }
+
+    Text {
+      visible: !page.view.notificationsOpen
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.Wrap
+      text: {
+        var on = []
+        if (page.w.notifyLowBattery) on.push("low battery below " + page.w.lowThreshold + " %")
+        if (page.w.notifyCritical) on.push("critical at " + page.w.criticalLevel + " %")
+        if (page.w.notifyConnection) on.push("connections")
+        return on.length > 0 ? "On: " + on.join(", ") + "." : "All off."
+      }
+      color: page.view.dim
+      font.family: page.view.fontFamily
+      font.pixelSize: Style.font.caption
     }
 
     OptionRow {
+      visible: page.view.notificationsOpen
       view: page.view
       glyph: "󰂃"
       label: "Low battery"
@@ -107,6 +130,7 @@ Column {
     }
 
     OptionRow {
+      visible: page.view.notificationsOpen
       view: page.view
       glyph: "󰁺"
       label: "Warn below"
@@ -126,6 +150,7 @@ Column {
     }
 
     OptionRow {
+      visible: page.view.notificationsOpen
       view: page.view
       glyph: "󱃍"
       label: "Critical battery"
@@ -142,6 +167,7 @@ Column {
     }
 
     OptionRow {
+      visible: page.view.notificationsOpen
       view: page.view
       glyph: "󰌷"
       label: "Connections"

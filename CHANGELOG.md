@@ -8,11 +8,8 @@
   with today as a 24-hour strip, an offset in minutes, and your own
   coordinates instead of your timezone's city. A keyboard's drawer can skip
   it. Off by default.
-- **Blink**, a built-in add-on just for fun: a switch in a backlit keyboard's
-  drawer turns its light on and off every few seconds, and puts it back as it
-  was when switched off. Drains the battery faster. Off by default.
 - **A drawer per device**, behind a chevron at the end of its row:
-  - dark hours (follow or skip) and Blink for that keyboard
+  - dark hours for that keyboard (follow or skip)
   - Hide this device
   - the device's capabilities, read once from its HID++ feature list and
     grouped as Lighting, Haptics, Buttons, Pointer & scroll, Keyboard and

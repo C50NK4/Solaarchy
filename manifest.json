@@ -31,7 +31,6 @@
       "notifyCritical": true,
       "notifyConnection": false,
       "darkHours": false,
-      "blink": false,
       "darkHoursOffset": 0,
       "darkHoursLocation": "",
       "devices": {}
@@ -120,13 +119,6 @@
         "type": "boolean",
         "label": "Dark hours",
         "description": "Built-in add-on: turn every backlit keyboard's light on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn. A keyboard's drawer in the panel can skip it.",
-        "defaultValue": false
-      },
-      {
-        "key": "blink",
-        "type": "boolean",
-        "label": "Blink",
-        "description": "Built-in add-on, just for fun: a Blink switch in each backlit keyboard's drawer turns its light on and off in a slow loop. Drains the battery faster.",
         "defaultValue": false
       },
       {

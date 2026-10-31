@@ -18,8 +18,6 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   right-click the bar icon
 - **Dark hours**, a built-in add-on: every backlit keyboard lights up at civil
   dusk and goes dark at civil dawn, worked out offline for where you are
-- **Blink**, a built-in add-on just for fun: a keyboard's light on and off in a
-  slow loop
 - A drawer per device: dark hours for that keyboard, hide the device, and what
   the device can do, grouped by capability as room for [add-ons](ADDONS.md)
 - Settings in the panel, behind the gear; the bar icon picker behind the big
@@ -99,8 +97,8 @@ In the panel:
 - The **bulb** next to a keyboard's name switches its backlight.
 - The **chevron** at the end of a device's row, or a click on the row, opens
   its drawer:
-  - dark hours for that keyboard (follow or skip), and Blink, when those
-    built-in add-ons are on
+  - dark hours for that keyboard (follow or skip), when that built-in add-on
+    is on
   - **Hide this device**, for a pairing you don't care about; Settings brings
     it back
   - a section per capability something fills, such as an
@@ -144,7 +142,6 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
 | `hideWhenDisconnected` | `true`   | Hide the widget while no receiver is plugged in and no Logitech device is connected or paired over Bluetooth |
 | `darkHours`            | `false`  | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
-| `blink`                | `false`  | Built-in add-on: a Blink switch in each backlit keyboard's drawer                  |
 | `darkHoursOffset`      | `0`      | Minutes added to the dark hours on both ends (−120 to 120)                         |
 | `darkHoursLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means your timezone's city                     |
 | `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `darkHours` (`false` skips), `hidden` |
@@ -184,21 +181,6 @@ omarchy bar set io.github.c50nk4.solaarchy darkHoursOffset 30 --json
 omarchy bar set io.github.c50nk4.solaarchy darkHoursLocation "47.07, 15.44"
 ```
 
-### Blink
-
-A built-in add-on, just for fun, and off by default. Switched on in Settings,
-it adds a Blink switch to each backlit keyboard's drawer, which turns that
-keyboard's light on and off every few seconds until you switch it off again.
-It drains the keyboard's battery faster, and every step is a `solaar config`
-call that Solaar also saves.
-
-- Switching it off puts the light back as it was, also after a shell restart
-  in the middle of it.
-- A keyboard that falls asleep just misses steps; blinking never outlives the
-  shell.
-- Dark hours leaves a blinking keyboard alone and catches up once it's put
-  back.
-
 ### Add-ons
 
 Model-specific controls, such as haptics or lighting effects, are add-ons:
@@ -207,7 +189,7 @@ controls into a device's drawer, or opens their own panel for that device.
 [ADDONS.md](ADDONS.md) shows how to write one. Settings lists them in three
 groups:
 
-- **Built-in add-ons** come with Solaarchy: Dark hours and Blink.
+- **Built-in add-ons** come with Solaarchy: Dark hours.
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before you install them, with links to their repository and plugins.omarchy.org
   page.
@@ -317,8 +299,7 @@ Solaarchy does:
   the widget stays while a Bluetooth keyboard sleeps.
 - **Changing things:** only when you ask. Toggling the backlight runs
   `solaar config <device> backlight …`; with dark hours on, the same command
-  runs once at dusk and once at dawn, and Blink runs it every few seconds
-  while it blinks. `solaarchy-twilight.py` works out those
+  runs once at dusk and once at dawn. `solaarchy-twilight.py` works out those
   times from your settings or your timezone, offline. Changing a setting in
   the panel, or picking a bar icon, runs `omarchy bar set …`. Opening Solaar
   runs `uwsm-app -- solaar`.

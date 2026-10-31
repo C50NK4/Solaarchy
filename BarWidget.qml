@@ -61,9 +61,7 @@ BarWidget {
   // only after this long without a live link.
   readonly property int goneAfterMs: 300000
   readonly property string twilightPath: localPath("solaarchy-twilight.py")
-  // The built-in add-ons' switches (Settings): dark hours, and Blink.
   readonly property bool darkHours: boolSetting("darkHours", false)
-  readonly property bool blink: boolSetting("blink", false)
   readonly property int darkHoursOffset: intSetting("darkHoursOffset", 0, -120, 120)
   readonly property string darkHoursLocation: String(cfg("darkHoursLocation", "")).trim()
   // Per-device choices by device id, from each device's drawer:
@@ -586,8 +584,6 @@ BarWidget {
     checkLowBattery()
     checkConnections(paired)
     saveState()
-    blinkWaiting = ({})
-    stepBlinkRestore()
     applyDarkHours()
   }
 
@@ -690,9 +686,7 @@ BarWidget {
       devices: devices,
       lowNotified: lowNotified,
       announcedGone: announcedGone,
-      darkApplied: darkApplied,
-      // A restart ends blinking, so the keyboards blinking now count too.
-      blinkRestore: Object.assign({}, blinking, blinkRestore)
+      darkApplied: darkApplied
     }) + "\n"
     if (text === savedText) return
     savedText = text
@@ -709,8 +703,6 @@ BarWidget {
       lowNotified = Object.assign({}, doc.lowNotified, lowNotified)
     if (Util.isPlainObject(doc.announcedGone))
       announcedGone = Object.assign({}, doc.announcedGone, announcedGone)
-    if (Util.isPlainObject(doc.blinkRestore))
-      blinkRestore = Object.assign({}, doc.blinkRestore, blinkRestore)
     if (Util.isPlainObject(doc.darkApplied)) {
       darkApplied = Object.assign({}, doc.darkApplied, darkApplied)
     } else if (typeof doc.darkApplied === "boolean" && Array.isArray(doc.devices)) {
@@ -881,8 +873,6 @@ BarWidget {
       var d = shown[i]
       var id = String(d.id)
       if (!d.backlight || !darkHoursFor(d) || darkApplied[id] === dark || darkFailed[id]) continue
-      // Blink has it; switched once Blink has put it back.
-      if (blinking.hasOwnProperty(id) || blinkRestore.hasOwnProperty(id)) continue
       if (!isLive(d)) continue  // retried after the next read
       if (backlightOn(d) === dark) {
         darkApplied[id] = dark
@@ -931,90 +921,6 @@ BarWidget {
   function timeText(seconds) {
     var d = new Date(seconds * 1000)
     return clockText(d.getHours() * 60 + d.getMinutes())
-  }
-
-  // ---- Blink: a built-in add-on, just for fun ----
-
-  // The backlight on and off in a slow loop, per keyboard from its drawer.
-  // blinking: id -> whether the light was on before; blinkRestore: those
-  // still to put back. Blinking stops with the shell, but what it must put
-  // back is saved, so a restart mid-blink still restores the light.
-  property var blinking: ({})
-  property var blinkRestore: ({})
-  // blinkSwitch: Blink's own switch being written, {id, before, restore}
-  // (before: the bulb's state until then). blinkWaiting: ids whose restore
-  // failed, left until the next read so a dozing keyboard isn't hammered.
-  property var blinkSwitch: null
-  property var blinkWaiting: ({})
-  property int blinkTurn: 0
-
-  function isBlinking(device) { return !!device && blinking.hasOwnProperty(String(device.id)) }
-
-  // The awake backlit link of a unit, hidden ones too; null while it sleeps.
-  function liveBacklit(id) {
-    for (var i = 0; i < devices.length; i++)
-      if (String(devices[i].id) === String(id) && devices[i].backlight && isLive(devices[i])) return devices[i]
-    return null
-  }
-
-  function setBlinking(id, on) {
-    id = String(id)
-    var next = Object.assign({}, blinking)
-    var back = Object.assign({}, blinkRestore)
-    if (on && !next.hasOwnProperty(id)) {
-      var d = liveBacklit(id)
-      if (!d) return
-      // Already waiting to be put back: keep the state from before.
-      next[id] = back.hasOwnProperty(id) ? back[id] : backlightOn(d)
-      delete back[id]
-    } else if (!on && next.hasOwnProperty(id)) {
-      back[id] = next[id]
-      delete next[id]
-    } else {
-      return
-    }
-    blinking = next
-    blinkRestore = back
-    saveState()
-    stepBlinkRestore()
-  }
-
-  onBlinkChanged: if (!blink) for (var id in blinking) setBlinking(id, false)
-
-  // Puts one keyboard back; the read after that switch comes back here for
-  // the next. One asleep now is put back once it wakes. It leaves
-  // blinkRestore only when the switch went through (backlightProc).
-  function stepBlinkRestore() {
-    if (backlightProc.running) return
-    for (var id in blinkRestore) {
-      var d = liveBacklit(id)
-      if (!d || blinkWaiting[id]) continue
-      var on = blinkRestore[id]
-      if (backlightOn(d) !== on) {
-        blinkSwitch = { "id": id, "before": pendingBacklight[id], "restore": true }
-        setBacklight(d, on ? 1 : 0)
-        return
-      }
-      var back = Object.assign({}, blinkRestore)
-      delete back[id]
-      blinkRestore = back
-      saveState()
-    }
-  }
-
-  // One switch per tick, keyboards in turn; a sleeping one is skipped.
-  function blinkStep() {
-    stepBlinkRestore()
-    if (backlightProc.running) return
-    var ids = Object.keys(blinking)
-    for (var k = 0; k < ids.length; k++) {
-      var d = liveBacklit(ids[(blinkTurn + k) % ids.length])
-      if (!d) continue
-      blinkTurn = (blinkTurn + k + 1) % ids.length
-      blinkSwitch = { "id": String(d.id), "before": pendingBacklight[d.id], "restore": false }
-      setBacklight(d, backlightOn(d) ? 0 : 1)
-      return
-    }
   }
 
   // ---- Capabilities and add-ons ----
@@ -1340,29 +1246,6 @@ BarWidget {
   Process {
     id: backlightProc
     onExited: function(exitCode) {
-      // Blink's own switches show no error: a keyboard falling asleep just
-      // misses one, and the bulb goes back to the state it really has. A
-      // step needs no read after it (the bulb already shows the target); a
-      // restore that went through gets one, a failed one waits for the next.
-      var blinkSwitch = root.blinkSwitch
-      if (blinkSwitch !== null) {
-        root.blinkSwitch = null
-        var id = blinkSwitch.id
-        if (exitCode !== 0) {
-          var pending = Object.assign({}, root.pendingBacklight)
-          if (blinkSwitch.before === undefined) delete pending[id]
-          else pending[id] = blinkSwitch.before
-          root.pendingBacklight = pending
-          if (blinkSwitch.restore) root.blinkWaiting[id] = true
-          else root.stepBlinkRestore()
-          return
-        }
-        if (!blinkSwitch.restore) { root.stepBlinkRestore(); return }
-        var back = Object.assign({}, root.blinkRestore)
-        delete back[id]
-        root.blinkRestore = back
-        root.saveState()
-      }
       if (exitCode !== 0) {
         root.pendingBacklight = ({})
         root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not switch the backlight"
@@ -1396,15 +1279,6 @@ BarWidget {
   Timer {
     id: twilightTimer
     onTriggered: root.runTwilight()
-  }
-
-  // Blink's loop: each step takes about a second (`solaar config` through
-  // the Solaar app), so the light changes every few seconds.
-  Timer {
-    interval: 3000
-    repeat: true
-    running: Object.keys(root.blinking).length > 0
-    onTriggered: root.blinkStep()
   }
 
   Process {
