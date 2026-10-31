@@ -95,6 +95,20 @@ function inGroup(group, variant) {
   })
 }
 
+// "auto" and "auto-outline" are picks rather than drawings: the bar draws the
+// device icon of that style that fits the devices it lists (BarWidget's
+// autoIcon).
+function isAuto(id) {
+  return id === "auto" || id === "auto-outline"
+}
+
+// One row of the picker's DEVICES grid, in order: the auto pick, then the
+// device icons of that variant. The auto pick carries no drawing of its own.
+function deviceRow(variant) {
+  return [{"id": variant === "outline" ? "auto-outline" : "auto", "label": "Auto", "variant": variant}]
+    .concat(inGroup("device", variant))
+}
+
 // An icon's height at a given base size, scaled by its own barScale (or 1
 // for a missing icon/barScale) and rounded to a whole pixel.
 function scaledHeight(icon, base) {

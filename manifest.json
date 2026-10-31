@@ -43,15 +43,17 @@
         "label": "Bar icon",
         "options": [
           "solaar",
+          "auto",
           "mouse",
           "keyboard",
           "combo",
+          "auto-outline",
           "mouse-outline",
           "keyboard-outline",
           "combo-outline"
         ],
         "defaultValue": "solaar",
-        "description": "solaar, or a device icon: mouse, keyboard, combo, each also as -outline. To use your own artwork instead, see customIcon."
+        "description": "solaar, or a device icon: auto (follows your devices), mouse, keyboard, combo, each also as -outline. To use your own artwork instead, see customIcon."
       },
       {
         "key": "customIcon",

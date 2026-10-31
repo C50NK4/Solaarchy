@@ -431,10 +431,11 @@ Item {
       columns: 1
     }
 
-    // Filled icons on the first row, their outline versions below.
+    // Filled icons on the first row, their outline versions below, each row
+    // led by its auto pick.
     IconSection {
       title: "DEVICES"
-      icons: Icons.inGroup("device", "filled").concat(Icons.inGroup("device", "outline"))
+      icons: Icons.deviceRow("filled").concat(Icons.deviceRow("outline"))
     }
 
     // The user's own icons, with the "+" tile always last so the section is
@@ -710,7 +711,7 @@ Item {
   }
 
   // Tile geometry shared by every section.
-  readonly property int tileColumns: 3
+  readonly property int tileColumns: 4
   readonly property real tileGap: Style.space(6)
   readonly property real tileHeight: Style.space(40)
 
@@ -739,7 +740,7 @@ Item {
       columnSpacing: content.tileGap
       rowSpacing: content.tileGap
       // Tiles get whole-pixel widths so their borders stay crisp. The few
-      // leftover pixels go to the middle column, so every row ends exactly at
+      // leftover pixels all go to one column, so every row ends exactly at
       // the section's right edge, flush with full-width tiles and separators.
       readonly property int baseWidth: Math.floor((width - columnSpacing * (columns - 1)) / columns)
       readonly property int remainder: Math.round(width - columnSpacing * (columns - 1) - baseWidth * columns)
@@ -795,11 +796,14 @@ Item {
   }
 
   // One selectable icon. Icons keep their relative sizes (barScale), so a
-  // keyboard stays shorter than a mouse, exactly as in the bar.
+  // keyboard stays shorter than a mouse, exactly as in the bar. An auto tile
+  // draws the device icon it stands for right now, marked with a small A.
   component IconTile: Item {
     id: tile
     property var icon: null
-    readonly property bool chosen: !!icon && content.w.currentIcon.id === icon.id
+    readonly property bool isAuto: !!icon && Icons.isAuto(icon.id)
+    readonly property var drawn: isAuto ? content.w.resolveIcon(icon.id) : icon
+    readonly property bool chosen: !!icon && content.w.chosenIcon === icon.id
     readonly property string action: icon ? "icon:" + icon.id : ""
     height: content.tileHeight
 
@@ -810,17 +814,31 @@ Item {
       foreground: content.view.fg
       fontFamily: content.view.fontFamily
       hasCursor: content.view.hasCursorOn(tile.action)
-      tooltipText: tile.icon ? tile.icon.label + (tile.icon.variant === "outline" ? " (outline)" : "") : ""
+      tooltipText: tile.icon ? tile.icon.label + (tile.icon.variant === "outline" ? " (outline)" : "")
+        + (tile.isAuto ? ": follows your devices (now " + tile.drawn.label + ")" : "") : ""
       onClicked: content.w.chooseIcon(tile.icon.id)
       onHovered: function(h) { content.view.hoverAction(tile.action, h) }
     }
 
     IconMark {
       anchors.centerIn: parent
-      iconId: tile.icon ? tile.icon.id : Icons.defaultId
-      iconData: tile.icon && tile.icon.custom ? tile.icon : null
-      height: Icons.scaledHeight(tile.icon, Style.space(22))
+      iconId: tile.drawn ? tile.drawn.id : Icons.defaultId
+      iconData: tile.drawn && tile.drawn.custom ? tile.drawn : null
+      height: Icons.scaledHeight(tile.drawn, Style.space(22))
       color: tile.chosen ? Style.selectedStateColor(content.view.fg, Color.accent) : content.view.fg
+    }
+
+    Text {
+      visible: tile.isAuto
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.margins: Style.space(4)
+      textFormat: Text.PlainText
+      text: "A"
+      color: content.view.dim
+      font.family: content.view.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: true
     }
   }
 }

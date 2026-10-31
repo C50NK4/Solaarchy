@@ -36,12 +36,13 @@ Panel {
   readonly property var actions: {
     if (page === "icons") {
       // Mirrors PanelContent.qml's picker sections and their order exactly
-      // (SOLAAR, then DEVICES filled/outline, then YOUR OWN) so arrow-key
-      // navigation always matches the tile grid it walks, rather than relying
-      // on icons.js's flat list happening to be in that order.
+      // (SOLAAR, then the DEVICES rows, each led by its auto pick, then YOUR
+      // OWN) so arrow-key navigation always matches the tile grid it walks,
+      // rather than relying on icons.js's flat list happening to be in that
+      // order.
       var pickerIcons = [Icons.byId("solaar")]
-        .concat(Icons.inGroup("device", "filled"))
-        .concat(Icons.inGroup("device", "outline"))
+        .concat(Icons.deviceRow("filled"))
+        .concat(Icons.deviceRow("outline"))
         .concat(w ? w.customIcons : [])
       var picker = ["back"]
       for (var i = 0; i < pickerIcons.length; i++) picker.push("icon:" + pickerIcons[i].id)

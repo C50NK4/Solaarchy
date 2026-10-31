@@ -75,13 +75,35 @@ BarWidget {
   // enum in the manifest and so can only ever hold a built-in id: `customIcon`
   // names a file in customIconDir and wins while it is set, which keeps the
   // Omarchy settings dropdown valid either way.
-  readonly property string settingIcon: Icons.byId(String(setting("icon", Icons.defaultId))).id
+  readonly property string settingIcon: {
+    var id = String(setting("icon", Icons.defaultId))
+    return Icons.isAuto(id) ? id : Icons.byId(id).id
+  }
   readonly property string settingCustomIcon: String(setting("customIcon", "")).trim()
   property string iconOverride: ""
-  readonly property var currentIcon: resolveIcon(iconOverride !== "" ? iconOverride
-    : (settingCustomIcon !== "" ? "custom:" + settingCustomIcon : settingIcon))
+  // The pick, which the picker highlights: auto itself, not what it draws,
+  // and the setting in place of a custom file that is gone (see resolveIcon).
+  readonly property string chosenIcon: {
+    var id = iconOverride !== "" ? iconOverride
+      : (settingCustomIcon !== "" ? "custom:" + settingCustomIcon : settingIcon)
+    return id.indexOf("custom:") === 0 && !resolveIcon(id).custom ? settingIcon : id
+  }
+  readonly property var currentIcon: resolveIcon(chosenIcon)
   onSettingIconChanged: iconOverride = ""
   onSettingCustomIconChanged: iconOverride = ""
+  // What auto draws: the keyboard or the mouse when only that kind is listed,
+  // else both (combo), also when neither is. Asleep devices count, so the
+  // icon doesn't change each time one sleeps.
+  readonly property string autoIcon: {
+    var keyboards = false
+    var mice = false
+    for (var i = 0; i < shown.length; i++) {
+      var kind = shown[i].kind
+      if (kind === "keyboard" || kind === "numpad") keyboards = true
+      else if (kind === "mouse" || kind === "trackball" || kind === "touchpad") mice = true
+    }
+    return keyboards && !mice ? "keyboard" : (mice && !keyboards ? "mouse" : "combo")
+  }
 
   // Custom bar icons: every SVG in the icon folder, in name order. Solaarchy
   // ships no vendor logos, so this is how someone puts their hardware's mark
@@ -260,13 +282,15 @@ BarWidget {
   }
 
   // An icon id to its record: built-ins from icons.js, "custom:<name>" from the
-  // icon folder. A custom pick whose file has since been renamed or deleted
-  // falls back to the built-in icon rather than drawing nothing.
+  // icon folder, auto as the autoIcon of its style. A custom pick whose file
+  // has since been renamed or deleted falls back to the built-in icon rather
+  // than drawing nothing.
   function resolveIcon(id) {
+    if (Icons.isAuto(id)) return Icons.byId(id.replace("auto", autoIcon))
     if (id.indexOf("custom:") !== 0) return Icons.byId(id)
     for (var i = 0; i < customIcons.length; i++)
       if (customIcons[i].id === id) return customIcons[i]
-    return Icons.byId(settingIcon)
+    return resolveIcon(settingIcon)
   }
 
   // One custom icon, as read from disk: its proportions (so a wide logo gets a
