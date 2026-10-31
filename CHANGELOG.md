@@ -2,14 +2,15 @@
 
 ## Unreleased
 
-- **Dark hours**, a built-in add-on: every backlit keyboard can switch on at
+- **Circadian**, a built-in add-on: every backlit keyboard can switch on at
   civil dusk and off at civil dawn, so it lights up when you sit down before
   sunrise even after you turned it off during the day. It has its own page
-  with today as a 24-hour strip, an offset in minutes, and your own
-  coordinates instead of your timezone's city. A keyboard's drawer can skip
-  it. Off by default.
+  with today as a 24-hour strip, whether it is daylight or dark outside and
+  until when, the timing in minutes, and the location: Omarchy's weather
+  location, else your timezone's city, or coordinates of your own. A
+  keyboard's drawer can skip it. Off by default.
 - **A drawer per device**, behind a chevron at the end of its row:
-  - dark hours for that keyboard (follow or skip)
+  - Circadian for that keyboard (follow or skip)
   - Hide this device
   - the device's capabilities, read once from its HID++ feature list and
     grouped as Lighting, Haptics, Buttons, Pointer & scroll, Keyboard and
@@ -26,8 +27,14 @@
   own controls into a device's drawer, or open its own panel for that device.
   Settings lists the built-in ones, curated ones (with links, even before
   they're installed) and any other installed ones, each with its own switch.
-  See ADDONS.md. Haptics for the MX Master 4 is the first curated add-on, in
-  development.
+  Built-in add-ons live in `addons/`: Circadian, and Rainbow LED, an
+  experimental mock-up that is off by default. See addons/ADDONS.md. Haptics
+  for the MX Master 4 is the first curated add-on, in development.
+- The widget hides whenever nothing Logitech is here: no receiver, no device
+  connected, none paired over Bluetooth. Before, a device seen once kept it
+  in the bar.
+- A keyboard paired twice, to a receiver and over Bluetooth, no longer shows
+  a second row while both links are asleep.
 
 ## 1.0.4
 

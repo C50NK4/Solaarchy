@@ -1,0 +1,11 @@
+{
+  "api": 1,
+  "category": "lighting",
+  "features": [],
+  "label": "Rainbow LED",
+  "icon": "󰍄",
+  "description": "Experimental mock-up: greyed colour controls in a lit device's drawer. Changes nothing.",
+  "experimental": true,
+  "setting": "rainbowMockup",
+  "drawer": "Drawer.qml"
+}

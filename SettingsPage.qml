@@ -32,34 +32,43 @@ Column {
       fontFamily: page.view.fontFamily
     }
 
-    OptionRow {
-      view: page.view
-      glyph: "󰖔"
-      label: "Dark hours"
-      captionUrgent: page.w.twilightError !== ""
-      caption: page.w.twilightError !== "" ? page.w.twilightError
-        : page.w.backlitKeyboards.length === 0 ? "On at dusk, off at dawn. No backlit keyboard yet."
-        : page.w.darkTimesText !== "" ? page.w.darkTimesText.charAt(0).toUpperCase() + page.w.darkTimesText.slice(1)
-        : "On at dusk, off at dawn"
+    // Each from its addons/<id> folder; its service, when it has one, words
+    // the caption.
+    Repeater {
+      model: page.w.builtins
 
-      ToggleSwitch {
-        anchors.verticalCenter: parent.verticalCenter
-        checked: page.w.darkHours
-        foreground: page.view.fg
-        hasCursor: page.view.hasCursorOn("dark-toggle")
-        onToggled: page.w.setDarkHours(!page.w.darkHours)
-        onHovered: function(h) { page.view.hoverAction("dark-toggle", h) }
-      }
+      OptionRow {
+        id: builtinRow
+        required property var modelData
+        readonly property var service: page.w.services[modelData.id] || null
+        readonly property string onAction: "addon-on:" + modelData.id
+        readonly property string pageAction: "addon-page:" + modelData.id
+        view: page.view
+        glyph: modelData.icon !== "" ? modelData.icon : "󰐱"
+        label: modelData.label
+        captionUrgent: !!service && service.captionUrgent === true
+        caption: service && service.caption ? service.caption : modelData.description
 
-      PanelActionButton {
-        anchors.verticalCenter: parent.verticalCenter
-        iconText: "󰅂"
-        tooltipText: "Times, offset and location"
-        foreground: page.view.fg
-        fontFamily: page.view.fontFamily
-        hasCursor: page.view.hasCursorOn("dark-page")
-        onClicked: page.view.showPage("darkhours")
-        onHovered: function(h) { page.view.hoverAction("dark-page", h) }
+        ToggleSwitch {
+          anchors.verticalCenter: parent.verticalCenter
+          checked: page.w.addonOn(builtinRow.modelData)
+          foreground: page.view.fg
+          hasCursor: page.view.hasCursorOn(builtinRow.onAction)
+          onToggled: page.view.runAction(builtinRow.onAction)
+          onHovered: function(h) { page.view.hoverAction(builtinRow.onAction, h) }
+        }
+
+        PanelActionButton {
+          visible: builtinRow.modelData.page !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          iconText: "󰅂"
+          tooltipText: "More"
+          foreground: page.view.fg
+          fontFamily: page.view.fontFamily
+          hasCursor: page.view.hasCursorOn(builtinRow.pageAction)
+          onClicked: page.view.runAction(builtinRow.pageAction)
+          onHovered: function(h) { page.view.hoverAction(builtinRow.pageAction, h) }
+        }
       }
     }
   }
@@ -102,8 +111,9 @@ Column {
       wrapMode: Text.Wrap
       text: {
         var on = []
-        if (page.w.notifyLowBattery) on.push("low battery below " + page.w.lowThreshold + " %")
-        if (page.w.notifyCritical) on.push("critical at " + page.w.criticalLevel + " %")
+        // No-break spaces keep "5 %" on one line.
+        if (page.w.notifyLowBattery) on.push("low battery below " + page.w.lowThreshold + "\u00a0%")
+        if (page.w.notifyCritical) on.push("critical at " + page.w.criticalLevel + "\u00a0%")
         if (page.w.notifyConnection) on.push("connections")
         return on.length > 0 ? "On: " + on.join(", ") + "." : "All off."
       }
@@ -198,7 +208,7 @@ Column {
       view: page.view
       glyph: "󰈉"
       label: "Hide when no receiver"
-      caption: "Back as soon as one is plugged in"
+      caption: "Nor any Logitech device on cable or Bluetooth. Back as soon as one is here"
 
       ToggleSwitch {
         anchors.verticalCenter: parent.verticalCenter
@@ -348,8 +358,8 @@ Column {
     textFormat: Text.PlainText
     wrapMode: Text.Wrap
     text: "An add-on is an Omarchy plugin with a solaarchy-addon.json next to its manifest; installed ones "
-      + "show up here by themselves. ADDONS.md in Solaarchy's repository shows how to write one and how "
-      + "to get it curated."
+      + "show up here by themselves. addons/ADDONS.md in Solaarchy's repository shows how to write one and "
+      + "how to get it curated."
     color: page.view.dim
     font.family: page.view.fontFamily
     font.pixelSize: Style.font.caption

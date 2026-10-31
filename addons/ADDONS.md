@@ -8,9 +8,10 @@ install, update, enable and disable like any other, plus one file,
 
 Solaarchy's Settings lists add-ons in three groups:
 
-- **Built-in add-ons** come with Solaarchy and switch on in Settings: Dark
-  hours (backlight by civil twilight). It uses Solaarchy's own code, not this
-  API.
+- **Built-in add-ons** come with Solaarchy, one folder each next to this
+  file, and switch on in Settings: Circadian (the keyboard light by civil
+  twilight) and Rainbow LED (an experimental mock-up, off by default). See
+  [Built-in add-ons](#built-in-add-ons).
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
   plugins.omarchy.org page, and shown greyed in the drawers they fit.
@@ -123,6 +124,9 @@ Column {
 | `openPanel(extra)` | Opens your floating panel for this device. Keys in `extra` join the payload. |
 | `refresh()` | Asks Solaarchy for a fresh device read, for example after you changed something. |
 
+`rainbow/Drawer.qml` next to this file is a complete drawer that uses only
+this API.
+
 Rules:
 
 - **Width follows the drawer.** Size your height with `implicitHeight`.
@@ -188,6 +192,92 @@ terminal, which is handy while testing.
 Add-on QML runs inside the Omarchy shell process, just as every Omarchy plugin
 does. Solaarchy adds no new trust. It loads QML only from plugins that you
 installed and enabled.
+
+## Built-in add-ons
+
+Built-in add-ons ship inside Solaarchy, one folder each next to this file:
+
+| Folder | Add-on | Parts |
+|---|---|---|
+| `circadian/` | Circadian: the keyboard light on at dusk, off at dawn | service, page, drawer, `twilight.py` |
+| `rainbow/` | Rainbow LED: a greyed mock-up, off by default | drawer only, through the API above |
+
+Each has the same `solaarchy-addon.json`, with these keys on top:
+
+| Key | Meaning |
+|---|---|
+| `setting` | Required. Its on/off key in Solaarchy's own settings, such as `circadian`. |
+| `description` | Its caption in Settings, unless its service gives one. |
+| `experimental` | `true` keeps it out of the drawers while it is off. |
+| `service` | Optional. A QML file whose root is an `Item`, created once at start. It runs for as long as the widget does. |
+| `page` | Optional. A QML file for its own page in the panel, behind the chevron next to its switch. |
+
+### Service
+
+A service gets two properties at creation:
+
+- **`host`** is Solaarchy's bar widget (`BarWidget.qml`), with all it has.
+  The parts made for add-ons:
+  - `shown`: one entry per device
+  - `cfg(name, fallback)`, `boolSetting`, `intSetting`: settings, a change
+    made in the panel included
+  - `saveSetting(name, value, later)`, `stepSetting(...)`
+  - `deviceSetting(device, key)`, `saveDeviceSetting(device, key, value)`
+  - `setBacklight(device, 0 or 1, done)`, where `done(ok)` is called once
+    the switch ends
+  - `backlightOn(device)`, `backlightBusy`, `isLive(device)`
+  - `panelPage`: the panel's page while it is open, else `""`
+  - `nowTick`: counts every 30 s
+  - `home`
+  - `statusApplied()`: a signal after every device read
+- **`addon`** is its entry: `id`, `setting`, `dir` (its folder), and the keys
+  above.
+
+Solaarchy asks a service for these, when it has them:
+
+| Member | Used for |
+|---|---|
+| `caption`, `captionUrgent` | Its row in Settings |
+| `message` | An urgent line under the devices, while it is not empty |
+| `tooltipFor(device)` | A line in a keyboard bulb's tooltip |
+| `fits(device)` | Whether its drawer row shows on a device, instead of the feature match |
+| `setOn(on)` | Its switch in Settings, instead of a plain `saveSetting` |
+| `pageActions` | Keyboard-cursor actions on its page, after "back" |
+| `drawerActions(device)` | Keyboard-cursor actions of its drawer row |
+| `run(verb, device)` | Runs its actions |
+
+### Page and drawer
+
+- **Page.** It gets `service`, `w` (the bar widget) and `view` (the panel) at
+  creation, and is built fresh each time it opens. `import "../.."` gives it
+  Solaarchy's own `PageHeader`, `OptionRow` and `Stepper`.
+- **Drawer.** A built-in drawer's `host` has two more members, `service` and
+  `view`, so its controls can join the keyboard cursor:
+  `view.hasCursorOn(action)`, `view.runAction(action)` and
+  `view.hoverAction(action, hovered)`.
+- **Actions.** `<id>.<verb>` and `<id>.<verb>:<device id>` go to the
+  service's `run()`, and `addon-page:<id>` opens its page.
+
+### Adding one
+
+1. Create `addons/<id>/` with its `solaarchy-addon.json`, including `setting`.
+2. Add `<id>` to `builtinIds` in `BarWidget.qml`. The folders are read in that
+   order at start.
+3. Add the setting to `manifest.json`, in `defaults` and in `schema`, with
+   `false` as its default.
+4. Restart the shell (`omarchy restart shell`). QML is only read at start.
+
+## Writing one with Claude Code
+
+`.claude/skills/solaarchy-addon/` in Solaarchy's repository is a
+[Claude Code](https://claude.com/claude-code) skill for writing an add-on: the
+files, the API above, testing, and the rules. Claude Code picks it up by
+itself inside this repository. To use it in your own add-on's repository, link
+it into `~/.claude/skills/`:
+
+```sh
+ln -s ~/.config/omarchy/plugins/io.github.c50nk4.solaarchy/.claude/skills/solaarchy-addon ~/.claude/skills/
+```
 
 ## Curated add-ons
 

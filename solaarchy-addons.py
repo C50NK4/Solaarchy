@@ -2,7 +2,7 @@
 """Solaarchy: list the installed Solaarchy add-ons as JSON.
 
 An add-on is an ordinary Omarchy plugin with a solaarchy-addon.json next to
-its manifest.json (see ADDONS.md). Prints one JSON line:
+its manifest.json (see addons/ADDONS.md). Prints one JSON line:
   {"addons": [{"id", "name", "dir", "enabled", "category", "features",
                "label", "icon", "drawer", "panel"}], "errors": ["..."]}
 "drawer" is the add-on's drawer QML as an absolute path, "" for none; "panel"

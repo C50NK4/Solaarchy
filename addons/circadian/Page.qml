@@ -1,22 +1,26 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../.."
 
-// Dark hours: today as a 24-hour strip (filled = backlight on), the offset
-// from civil twilight, and where dusk and dawn are worked out for.
+// Circadian's page: today as a 24-hour strip (filled = keyboard light on),
+// the timing against civil dusk and dawn, and where those are worked out for.
 Column {
   id: page
 
-  // Set at creation by PanelContent.qml: the bar widget and the panel.
+  // Set at creation by PanelContent.qml: the add-on's service, the bar
+  // widget, and the panel.
+  property var service
   property var w
   property var view
 
-  // Timezone or Custom. Custom stays picked while its field is still empty.
-  property bool customLocation: w.darkHoursLocation !== ""
-  readonly property var twilight: w.twilight
-  readonly property int offset: w.darkHoursOffset
-  // Dark hours on, with a keyboard that follows it.
-  readonly property bool active: w.darkKeyboards.length > 0
+  // Omarchy's location or Custom. Custom stays picked while its field is
+  // still empty; the page is built fresh each time, so it starts as saved.
+  property bool customLocation: service.location !== ""
+  readonly property var twilight: service.twilight
+  readonly property int offset: service.offset
+  // On, with a keyboard that follows it.
+  readonly property bool active: service.keyboards.length > 0
 
   width: parent ? parent.width : 0
   spacing: Style.space(14)
@@ -24,7 +28,7 @@ Column {
   function chooseLocation(custom) {
     customLocation = custom
     if (!custom) {
-      if (w.darkHoursLocation !== "") w.saveSetting("darkHoursLocation", "")
+      if (service.location !== "") w.saveSetting("circadianLocation", "")
       view.restoreFocus()
     } else {
       locationField.forceActiveFocus()
@@ -33,26 +37,26 @@ Column {
 
   function saveLocation() {
     var text = locationField.text.trim()
-    if (text !== w.darkHoursLocation) w.saveSetting("darkHoursLocation", text)
+    if (text !== service.location) w.saveSetting("circadianLocation", text)
   }
 
   Connections {
-    target: page.view
+    target: page.service
     function onLocationModeRequested(custom) { page.chooseLocation(custom) }
   }
 
   PageHeader {
     view: page.view
-    title: "Dark hours"
+    title: "Circadian"
     backTooltip: page.view.backPage === "settings" ? "Back to settings" : "Back to devices"
 
     ToggleSwitch {
       anchors.verticalCenter: parent.verticalCenter
-      checked: page.w.darkHours
+      checked: page.service.on
       foreground: page.view.fg
-      hasCursor: page.view.hasCursorOn("dark-toggle")
-      onToggled: page.w.setDarkHours(!page.w.darkHours)
-      onHovered: function(h) { page.view.hoverAction("dark-toggle", h) }
+      hasCursor: page.view.hasCursorOn("circadian.toggle")
+      onToggled: page.view.runAction("circadian.toggle")
+      onHovered: function(h) { page.view.hoverAction("circadian.toggle", h) }
     }
   }
 
@@ -66,12 +70,22 @@ Column {
     opacity: page.active ? 1.0 : 0.55
 
     Text {
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.Wrap
+      text: "Your keyboard's light goes on at dusk and off at dawn: when the sun is 6° below the horizon."
+      color: page.view.dim
+      font.family: page.view.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    Text {
       visible: !page.twilight
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.Wrap
-      text: page.w.twilightError !== "" ? page.w.twilightError : "Working out dusk and dawn…"
-      color: page.w.twilightError !== "" ? page.view.urgent : page.view.dim
+      text: page.service.error !== "" ? page.service.error : "Working out dusk and dawn…"
+      color: page.service.error !== "" ? page.view.urgent : page.view.dim
       font.family: page.view.fontFamily
       font.pixelSize: Style.font.caption
     }
@@ -91,8 +105,8 @@ Column {
 
       function xAt(minute) { return Math.round(strip.width * minute / 1440) }
 
-      // Switch times over the strip: "on" where a dark span starts, "off"
-      // where one ends; midnight is not a switch.
+      // Switch times over the strip, with the bulb's own glyphs: on where a
+      // lit span starts, off where one ends; midnight is not a switch.
       Repeater {
         model: {
           var marks = []
@@ -109,7 +123,7 @@ Column {
           x: Math.max(0, Math.min(timeline.width - width, timeline.xAt(modelData.minute) - width / 2))
           y: 0
           textFormat: Text.PlainText
-          text: (modelData.on ? "on " : "off ") + page.w.clockText(modelData.minute)
+          text: (modelData.on ? "󰛨 " : "󰌶 ") + page.service.clockText(modelData.minute)
           color: page.view.fg
           font.family: page.view.fontFamily
           font.pixelSize: Style.font.caption
@@ -166,28 +180,30 @@ Column {
       }
     }
 
+    // What the sky does, without the offset: "light" alone read as the
+    // keyboard's light.
     Text {
       visible: !!page.twilight
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.Wrap
       text: !page.twilight ? ""
-        : (page.twilight.dark ? "Dark now" : "Light now")
-          + (page.twilight.until ? ", until " + page.w.timeText(page.twilight.until) : "")
-          + (page.active ? "" : !page.w.darkHours ? ". Dark hours is off." : ". Nothing follows dark hours yet.")
+        : (page.twilight.outsideDark ? "Dark outside" : "Daylight outside")
+          + (page.twilight.outsideUntil ? " until " + page.service.timeText(page.twilight.outsideUntil) : " all day")
+          + (page.active ? "." : !page.service.on ? ". Circadian is off." : ". No keyboard follows it yet.")
       color: page.view.dim
       font.family: page.view.fontFamily
       font.pixelSize: Style.font.caption
     }
   }
 
-  // ---- Offset ----
+  // ---- Timing ----
   Column {
     width: parent.width
     spacing: Style.space(10)
 
     PanelSectionHeader {
-      text: "OFFSET"
+      text: "TIMING"
       foreground: page.view.fg
       fontFamily: page.view.fontFamily
     }
@@ -195,7 +211,7 @@ Column {
     OptionRow {
       view: page.view
       glyph: "󰔛"
-      label: page.offset === 0 ? "At twilight" : (page.offset > 0 ? "Longer" : "Shorter")
+      label: page.offset === 0 ? "At dusk and dawn" : (page.offset > 0 ? "Lit longer" : "Lit shorter")
       caption: page.offset === 0 ? "On at dusk, off at dawn"
         : page.offset > 0 ? "On " + page.offset + " min before dusk, off " + page.offset + " min after dawn"
         : "On " + (-page.offset) + " min after dusk, off " + (-page.offset) + " min before dawn"
@@ -204,12 +220,12 @@ Column {
         anchors.verticalCenter: parent.verticalCenter
         view: page.view
         text: (page.offset > 0 ? "+" : "") + page.offset + " min"
-        minusAction: "offset-minus"
-        plusAction: "offset-plus"
+        minusAction: "circadian.offset-minus"
+        plusAction: "circadian.offset-plus"
         atMin: page.offset <= -120
         atMax: page.offset >= 120
-        onMinus: page.w.stepSetting("darkHoursOffset", page.offset, -5, -120, 120)
-        onPlus: page.w.stepSetting("darkHoursOffset", page.offset, 5, -120, 120)
+        onMinus: page.view.runAction("circadian.offset-minus")
+        onPlus: page.view.runAction("circadian.offset-plus")
       }
     }
   }
@@ -227,21 +243,21 @@ Column {
 
     ButtonGroup {
       focusable: false
-      options: [{ "value": "zone", "label": "Timezone" }, { "value": "custom", "label": "Custom" }]
-      value: page.customLocation ? "custom" : "zone"
+      options: [{ "value": "omarchy", "label": "Omarchy" }, { "value": "custom", "label": "Custom" }]
+      value: page.customLocation ? "custom" : "omarchy"
       foreground: page.view.fg
       fontFamily: page.view.fontFamily
       fontSize: Style.font.bodySmall
-      cursorIndex: page.view.hasCursorOn("loc-zone") ? 0 : (page.view.hasCursorOn("loc-custom") ? 1 : -1)
+      cursorIndex: page.view.hasCursorOn("circadian.loc-omarchy") ? 0 : (page.view.hasCursorOn("circadian.loc-custom") ? 1 : -1)
       onChanged: function(value) { page.chooseLocation(value === "custom") }
-      onHovered: function(index, h) { page.view.hoverAction(index === 0 ? "loc-zone" : "loc-custom", h) }
+      onHovered: function(index, h) { page.view.hoverAction(index === 0 ? "circadian.loc-omarchy" : "circadian.loc-custom", h) }
     }
 
     TextField {
       id: locationField
       visible: page.customLocation
       width: parent.width
-      text: page.w.darkHoursLocation
+      text: page.service.location
       placeholderText: "48.21, 16.37"
       foreground: page.view.fg
       font.family: page.view.fontFamily
@@ -261,10 +277,13 @@ Column {
         var t = page.twilight
         if (page.customLocation)
           return "Latitude, longitude; south and west negative. Enter saves."
-            + (t && t.source === "setting" ? " Using " + t.lat + ", " + t.lon + "." : "")
-        if (!t) return "Your timezone's city"
-        return t.source + ": " + t.lat + ", " + t.lon
-          + ". A wide timezone can be far off; Custom sets your own."
+            + (t && t.source === "custom" ? " Using " + t.lat + ", " + t.lon + "." : "")
+        if (!t) return "The location set in Omarchy, else your timezone's city."
+        if (t.source === "omarchy")
+          return "Omarchy's weather location" + (t.place !== "" ? ", " + t.place : "") + ": " + t.lat + ", " + t.lon + "."
+        var city = String(t.place).split("/").pop().replace(/_/g, " ")
+        return "Your timezone's city, " + city + ": " + t.lat + ", " + t.lon
+          + ". Set a location for Omarchy's weather, or Custom, if you live far from it."
       }
       color: page.view.dim
       font.family: page.view.fontFamily
@@ -279,12 +298,10 @@ Column {
     textFormat: Text.PlainText
     wrapMode: Text.Wrap
     text: {
-      var kbs = page.w.backlitKeyboards
-      if (kbs.length === 0) return "No backlit keyboard yet. Dark hours start with the first one."
-      var on = page.w.darkKeyboards.map(function(d) { return d.name })
-      var skipped = []
-      for (var i = 0; i < kbs.length; i++)
-        if (page.w.darkSkipped(kbs[i]) && skipped.indexOf(kbs[i].name) < 0) skipped.push(kbs[i].name)
+      var kbs = page.service.backlit
+      if (kbs.length === 0) return "No backlit keyboard yet. Circadian starts with the first one."
+      var on = page.service.keyboards.map(function(d) { return d.name })
+      var skipped = kbs.filter(page.service.skipped).map(function(d) { return d.name })
       return (on.length > 0 ? "Switches " + on.join(", ") + "." : "Switches no keyboard.")
         + (skipped.length > 0 ? " Skipped in its drawer: " + skipped.join(", ") + "." : "")
     }

@@ -1,0 +1,12 @@
+{
+  "api": 1,
+  "category": "lighting",
+  "features": ["BACKLIGHT", "BACKLIGHT2", "BACKLIGHT3"],
+  "label": "Circadian",
+  "icon": "󰖔",
+  "description": "Keyboard light on at dusk, off at dawn, by civil twilight where you are.",
+  "setting": "circadian",
+  "service": "Service.qml",
+  "page": "Page.qml",
+  "drawer": "Drawer.qml"
+}

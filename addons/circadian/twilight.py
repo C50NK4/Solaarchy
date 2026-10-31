@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Solaarchy: is it dark now, by civil twilight, and when does that change?
+"""Circadian (a Solaarchy add-on): is it dark now, by civil twilight, and when
+does that change?
 
-  solaarchy-twilight.py OFFSET_MIN [LOCATION]
+  twilight.py OFFSET_MIN [LOCATION]
 
 LOCATION is "lat, lon" in decimal degrees (north and east positive). Without
-it the system timezone's reference city is used, from zone1970.tab, so no
-network and no location service is involved. OFFSET_MIN widens the dark hours
-on both ends: 30 turns the light on 30 minutes before civil dusk and off 30
-minutes after civil dawn; negative narrows them.
+it, the location set for Omarchy's weather is used when it has coordinates
+(~/.local/state/omarchy/settings/weather.json), else the system timezone's
+reference city from zone1970.tab. No network and no location service is
+involved. OFFSET_MIN widens the dark hours on both ends: 30 turns the light on
+30 minutes before civil dusk and off 30 minutes after civil dawn; negative
+narrows them.
 
 Prints one JSON line:
   {"dark": true, "until": 1793430000, "dusk": "17:13", "dawn": "06:18",
-   "lat": 48.22, "lon": 16.33, "source": "Europe/Vienna"}
-"dusk"/"dawn" are today's local switch times, null when the sun never
-crosses -6 degrees today. "darkToday" lists today's dark spans as
-[start, end] local clock minutes, 0..1440, offset included, for drawing.
+   "outsideDark": true, "outsideUntil": 1793431800,
+   "lat": 48.22, "lon": 16.33, "source": "timezone", "place": "Europe/Vienna"}
+"dark"/"until" are the keyboard light's state and next switch, offset
+included; "dusk"/"dawn" are today's local switch times, null when the sun
+never crosses -6 degrees today. "outsideDark"/"outsideUntil" are the same
+without the offset: what the sky does. "darkToday" lists today's dark spans
+as [start, end] local clock minutes, 0..1440, offset included, for drawing.
+"source" is "custom", "omarchy" or "timezone"; "place" names it.
 On failure: {"error": "..."}.
 
 --test runs the self-check.
@@ -30,6 +37,7 @@ from datetime import date, datetime, timedelta, timezone
 
 ZENITH = 96.0  # civil twilight: the sun 6 degrees below the horizon
 ZONE_TAB = "/usr/share/zoneinfo/zone1970.tab"
+WEATHER = os.path.expanduser("~/.local/state/omarchy/settings/weather.json")
 
 
 def civil_twilight(day, lat, lon):
@@ -148,6 +156,19 @@ def zone_location():
     raise ValueError(f"no location for timezone {zone or 'UTC'}; set one as \"lat, lon\"")
 
 
+def omarchy_location(path=WEATHER):
+    """(lat, lon, name) set for Omarchy's weather (omarchy-weather-location), or None."""
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+        lat, lon = float(doc["latitude"]), float(doc["longitude"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return lat, lon, str(doc.get("name") or "")
+
+
 def parse_location(text):
     m = re.fullmatch(r"\s*([+-]?\d+(?:\.\d+)?)\s*[,;\s]\s*([+-]?\d+(?:\.\d+)?)\s*", text)
     if not m:
@@ -161,13 +182,18 @@ def parse_location(text):
 def main(argv):
     offset = max(-120, min(120, int(argv[1]))) if len(argv) > 1 and argv[1].lstrip("-").isdigit() else 0
     location = argv[2].strip() if len(argv) > 2 else ""
+    omarchy = None if location else omarchy_location()
     if location:
-        lat, lon = parse_location(location)
-        source = "setting"
+        (lat, lon), source, place = parse_location(location), "custom", ""
+    elif omarchy:
+        lat, lon, place = omarchy
+        source = "omarchy"
     else:
-        lat, lon, source = zone_location()
+        lat, lon, place = zone_location()
+        source = "timezone"
     now = datetime.now(timezone.utc)
     dark, until, today = schedule(now, lat, lon, offset)
+    outside_dark, outside_until, _ = schedule(now, lat, lon, 0)
 
     def local(t):
         return t.astimezone().strftime("%H:%M") if t else None
@@ -175,7 +201,9 @@ def main(argv):
     return {"dark": dark, "until": int(until.timestamp()) if until else None,
             "dawn": local(today and today[0]), "dusk": local(today and today[1]),
             "darkToday": dark_today(now, lat, lon, offset),
-            "lat": round(lat, 2), "lon": round(lon, 2), "source": source}
+            "outsideDark": outside_dark,
+            "outsideUntil": int(outside_until.timestamp()) if outside_until else None,
+            "lat": round(lat, 2), "lon": round(lon, 2), "source": source, "place": place}
 
 
 def test():
@@ -223,6 +251,17 @@ def test():
     assert dark_today(datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc), 78.22, 15.65, 0) == []
     assert parse_location("48.21, 16.37") == (48.21, 16.37)
     assert parse_location("-33.9 151.2") == (-33.9, 151.2)
+    # Omarchy's weather location: used only with coordinates.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "weather.json")
+        assert omarchy_location(path) is None
+        with open(path, "w") as f:
+            json.dump({"name": "Graz", "latitude": 47.07, "longitude": 15.44}, f)
+        assert omarchy_location(path) == (47.07, 15.44, "Graz")
+        with open(path, "w") as f:
+            json.dump({"name": "Malibu"}, f)
+        assert omarchy_location(path) is None
     print("ok")
 
 

@@ -16,10 +16,11 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   comes back
 - Keyboard backlight on/off: the bulb next to each keyboard's name, or
   right-click the bar icon
-- **Dark hours**, a built-in add-on: every backlit keyboard lights up at civil
+- **Circadian**, a built-in add-on: every backlit keyboard lights up at civil
   dusk and goes dark at civil dawn, worked out offline for where you are
-- A drawer per device: dark hours for that keyboard, hide the device, and what
-  the device can do, grouped by capability as room for [add-ons](ADDONS.md)
+- A drawer per device: Circadian for that keyboard, hide the device, and what
+  the device can do, grouped by capability as room for
+  [add-ons](addons/ADDONS.md)
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
 - The widget hides itself while no receiver is plugged in and no Logitech
@@ -55,7 +56,7 @@ Logitech or the Solaar project.
   </tr>
 </table>
 
-The panel follows your Omarchy theme; these shots use several different ones.
+The panel follows whichever Omarchy theme you pick.
 
 ## Requirements
 
@@ -97,12 +98,13 @@ In the panel:
 - The **bulb** next to a keyboard's name switches its backlight.
 - The **chevron** at the end of a device's row, or a click on the row, opens
   its drawer:
-  - dark hours for that keyboard (follow or skip), when that built-in add-on
+  - Circadian for that keyboard (follow or skip), when that built-in add-on
     is on
   - **Hide this device**, for a pairing you don't care about; Settings brings
     it back
   - a section per capability something fills, such as an
-    [add-on](ADDONS.md), and the device's other capabilities on one line
+    [add-on](addons/ADDONS.md), and the device's other capabilities on one
+    line
 - The **gear** opens Settings: the built-in add-ons, notifications, the bar,
   hidden devices, and the curated and other add-ons.
 - The **big icon** opens the bar icon picker.
@@ -141,44 +143,46 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `notifyConnection`     | `false`  | Notify when a device has had no link for 5 minutes, and when it comes back         |
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
 | `hideWhenDisconnected` | `true`   | Hide the widget while no receiver is plugged in and no Logitech device is connected or paired over Bluetooth |
-| `darkHours`            | `false`  | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
-| `darkHoursOffset`      | `0`      | Minutes added to the dark hours on both ends (−120 to 120)                         |
-| `darkHoursLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means your timezone's city                     |
-| `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `darkHours` (`false` skips), `hidden` |
+| `circadian`            | `false`  | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
+| `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
+| `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
+| `rainbowMockup`        | `false`  | Built-in experimental add-on: a greyed colour mock-up in lit devices' drawers. Changes nothing |
+| `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `circadian` (`false` skips), `hidden` |
 
 Connected and disconnected notifications wait 5 minutes because Solaarchy
 can't tell a device that fell asleep from one that was switched off; a
 reconnect is only announced for a device whose disconnect was.
 
-### Dark hours
+### Circadian
 
-Dark hours is a built-in add-on: Settings switches it on. Then every backlit
+Circadian is a built-in add-on: Settings switches it on. Then every backlit
 keyboard is switched on at civil dusk and off at civil dawn, when the sun is
 6° below the horizon: the time it gets too dark to see the keys, a while after
 sunset and before sunrise. The keyboard still decides by itself when to light
-up, as when you switch it on by hand. Dark hours only make sure it is switched
+up, as when you switch it on by hand. Circadian only makes sure it is switched
 on when you need it, for example when you sit down before dawn.
 
-The dark hours page (the chevron next to its switch in Settings, or in a
-keyboard's drawer) draws today as a 24-hour strip and sets the offset and the
-location.
+Its page (the chevron next to its switch in Settings, or in a keyboard's
+drawer) draws today as a 24-hour strip, says whether it is daylight or dark
+outside and until when, and sets the timing and the location.
 
 - A switch by hand, with the bulb or a right-click, holds until the next dusk
   or dawn.
 - A keyboard's drawer can skip it: that keyboard keeps whatever light you
   give it while the rest follow.
-- Dusk and dawn are worked out locally. With no `darkHoursLocation` the
-  reference city of your timezone is used (Vienna for `Europe/Vienna`); set
-  your own coordinates if you live far from it, since dusk moves with latitude
-  as well as longitude.
+- Dusk and dawn are worked out locally, for the first of these that is set:
+  `circadianLocation`, then Omarchy's weather location
+  (`omarchy-weather-location --set <name> <lat,lon>`), then the reference city
+  of your timezone (Vienna for `Europe/Vienna`). Dusk moves with latitude as
+  well as longitude, so set a location if you live far from that city.
 - In polar night or white nights, when the sun stays below or above −6° all
   day, the backlight just stays on or off.
 - The bulb's tooltip shows today's switch times.
 
 ```sh
-omarchy bar set io.github.c50nk4.solaarchy darkHours true --json
-omarchy bar set io.github.c50nk4.solaarchy darkHoursOffset 30 --json
-omarchy bar set io.github.c50nk4.solaarchy darkHoursLocation "47.07, 15.44"
+omarchy bar set io.github.c50nk4.solaarchy circadian true --json
+omarchy bar set io.github.c50nk4.solaarchy circadianOffset 30 --json
+omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
 ```
 
 ### Add-ons
@@ -186,10 +190,12 @@ omarchy bar set io.github.c50nk4.solaarchy darkHoursLocation "47.07, 15.44"
 Model-specific controls, such as haptics or lighting effects, are add-ons:
 ordinary Omarchy plugins with a `solaarchy-addon.json` that puts their
 controls into a device's drawer, or opens their own panel for that device.
-[ADDONS.md](ADDONS.md) shows how to write one. Settings lists them in three
-groups:
+[addons/ADDONS.md](addons/ADDONS.md) shows how to write one. Settings lists
+them in three groups:
 
-- **Built-in add-ons** come with Solaarchy: Dark hours.
+- **Built-in add-ons** come with Solaarchy, each in its own folder under
+  `addons/`: Circadian, and Rainbow LED, an experimental mock-up that is off
+  by default.
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before you install them, with links to their repository and plugins.omarchy.org
   page.
@@ -224,8 +230,8 @@ That leaves a real wish unserved: plenty of people are fond of their hardware
 and want its mark in their own bar. So instead of shipping the artwork,
 Solaarchy renders whatever SVG **you** supply.
 
-Open the bar icon picker (the palette next to Refresh) and click **+** under
-**YOUR OWN**. Pick an `.svg` file, and it is copied into
+Click the big icon at the top of the panel to open the bar icon picker, and
+click **+** under **YOUR OWN**. Pick an `.svg` file, and it is copied into
 `~/.config/omarchy/solaarchy/icons/` and selected right away — no terminal, no
 config file.
 
@@ -298,19 +304,22 @@ Solaarchy does:
   bus (`busctl … GetManagedObjects`), how many Logitech devices are paired, so
   the widget stays while a Bluetooth keyboard sleeps.
 - **Changing things:** only when you ask. Toggling the backlight runs
-  `solaar config <device> backlight …`; with dark hours on, the same command
-  runs once at dusk and once at dawn. `solaarchy-twilight.py` works out those
-  times from your settings or your timezone, offline. Changing a setting in
+  `solaar config <device> backlight …`; with Circadian on, the same command
+  runs once at dusk and once at dawn. `addons/circadian/twilight.py` works out
+  those times offline, from your settings, Omarchy's weather location or your
+  timezone. Changing a setting in
   the panel, or picking a bar icon, runs `omarchy bar set …`. Opening Solaar
   runs `uwsm-app -- solaar`.
-- **Add-ons:** when the panel opens, `solaarchy-addons.py` looks for
+- **Add-ons:** built-in ones load from Solaarchy's own `addons/` folder.
+  When the panel opens, `solaarchy-addons.py` looks for
   `solaarchy-addon.json` in your installed plugins and asks the shell which
   are enabled. A drawer loads an enabled add-on's QML, and its button runs
   `omarchy-shell shell summon <add-on> …`. An add-on's switch in Settings runs
   `omarchy plugin enable|disable <add-on>`, and a curated add-on's links open
   with `xdg-open`.
 - **Files:** last readings are saved to
-  `~/.local/state/omarchy/solaarchy.json`. Settings live in
+  `~/.local/state/omarchy/solaarchy.json`, and which keyboards Circadian
+  switched last to `~/.local/state/omarchy/solaarchy-circadian.json`. Settings live in
   `~/.config/omarchy/shell.json` like every bar widget's.
 - **Notifications:** sent with `notify-send -a Solaarchy`.
 - **Privileges:** none. No sudo, no udev rule or system service of its own;
@@ -340,7 +349,7 @@ omarchy plugin update io.github.c50nk4.solaarchy
 
 ```sh
 omarchy plugin remove io.github.c50nk4.solaarchy
-rm -f ~/.local/state/omarchy/solaarchy.json
+rm -f ~/.local/state/omarchy/solaarchy.json ~/.local/state/omarchy/solaarchy-circadian.json
 ```
 
 Removing the plugin stops the connection watcher with it. Solaar itself is

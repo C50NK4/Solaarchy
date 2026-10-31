@@ -23,8 +23,8 @@ Panel {
 
   property int cursorIndex: -1
   // "main": the devices; "icons": the bar icon picker; "settings": the gear
-  // page; "darkhours": the dark hours page, which goes back to wherever it
-  // was opened from (Settings or a keyboard's drawer).
+  // page; "addon:<id>": a built-in add-on's page, which goes back to wherever
+  // it was opened from (Settings or a device's drawer).
   property string page: "main"
   property string backPage: "main"
   // The device whose drawer is open, by id; "" for none.
@@ -50,11 +50,16 @@ Panel {
       return picker
     }
     if (page === "settings") {
-      var settings = ["back", "dark-toggle", "dark-page", "notify-more"]
+      var settings = ["back"]
+      if (!w) return settings
+      for (var b = 0; b < w.builtins.length; b++) {
+        settings.push("addon-on:" + w.builtins[b].id)
+        if (w.builtins[b].page !== "") settings.push("addon-page:" + w.builtins[b].id)
+      }
+      settings.push("notify-more")
       if (notificationsOpen)
         settings.push("notify-low", "low-minus", "low-plus", "notify-critical", "notify-connection")
       settings.push("hide-bar")
-      if (!w) return settings
       for (var h = 0; h < w.hiddenDevices.length; h++) settings.push("unhide:" + w.hiddenDevices[h].id)
       for (var c = 0; c < w.curatedAddons.length; c++) {
         var curated = w.curatedAddons[c]
@@ -67,8 +72,10 @@ Panel {
       for (var o = 0; o < w.otherAddons.length; o++) settings.push("addon-toggle:" + w.otherAddons[o].id)
       return settings
     }
-    if (page === "darkhours")
-      return ["back", "dark-toggle", "offset-minus", "offset-plus", "loc-zone", "loc-custom"]
+    if (page.indexOf("addon:") === 0) {
+      var service = w ? w.services[page.slice(6)] : null
+      return ["back"].concat(service && service.pageActions ? service.pageActions : [])
+    }
     var list = ["icons", "settings", "refresh", "solaar"]
     if (w) {
       for (var j = 0; j < w.shown.length; j++) {
@@ -78,11 +85,12 @@ Panel {
         if (String(d.id) !== drawerId) continue
         var sections = w.drawerSections(d).sections
         for (var s = 0; s < sections.length; s++) {
-          if (sections[s].builtin) {
-            if (w.darkHours) list.push("dark-own:" + d.id, "dark-page")
+          for (var a = 0; a < sections[s].addons.length; a++) {
+            var addon = sections[s].addons[a]
+            var own = w.services[addon.id]
+            if (own && typeof own.drawerActions === "function") list = list.concat(own.drawerActions(d))
+            else if (addon.panel) list.push("addon:" + addon.id + ":" + d.id)
           }
-          for (var a = 0; a < sections[s].addons.length; a++)
-            if (sections[s].addons[a].panel) list.push("addon:" + sections[s].addons[a].id + ":" + d.id)
         }
         list.push("hide:" + d.id)
       }
@@ -100,16 +108,16 @@ Panel {
   }
 
   function showPage(name) {
-    if (name === "darkhours" && page !== "darkhours") backPage = page
+    if (name.indexOf("addon:") === 0 && page.indexOf("addon:") !== 0) backPage = page
     page = name
     cursorIndex = -1
     scroll.contentY = 0
-    // Leaving the dark hours page from its location field must not leave
-    // the keys with a hidden field.
+    // Leaving a page from a text field on it must not leave the keys with a
+    // hidden field.
     restoreFocus()
   }
 
-  function goBack() { showPage(page === "darkhours" ? backPage : "main") }
+  function goBack() { showPage(page.indexOf("addon:") === 0 ? backPage : "main") }
 
   function toggleDrawer(id) {
     drawerId = drawerId === String(id) ? "" : String(id)
@@ -165,7 +173,8 @@ Panel {
     var colon = name.indexOf(":")
     var arg = colon >= 0 ? name.slice(colon + 1) : ""
     var verb = colon >= 0 ? name.slice(0, colon) : name
-    var device = arg !== "" && ["icon", "addon", "addon-toggle", "link"].indexOf(verb) < 0 ? deviceById(arg) : null
+    var device = arg !== "" && ["icon", "addon", "addon-toggle", "link", "addon-on", "addon-page"].indexOf(verb) < 0
+      ? deviceById(arg) : null
     if (verb === "icons") showPage("icons")
     else if (verb === "settings") showPage("settings")
     else if (verb === "back") goBack()
@@ -175,7 +184,6 @@ Panel {
     else if (verb === "icon") w.chooseIcon(arg)
     else if (verb === "backlight") { if (device && device.backlight) w.toggleBacklight(device) }
     else if (verb === "drawer") toggleDrawer(arg)
-    else if (verb === "dark-own") { if (device) w.setDeviceDarkHours(device, !w.darkHoursFor(device)) }
     else if (verb === "link") w.openLink(arg)
     else if (verb === "addon-toggle") {
       var addon = w.installedAddon(arg)
@@ -195,30 +203,29 @@ Panel {
       for (var k = 0; k < w.addons.length; k++)
         if (w.addons[k].id === arg.slice(0, cut) && target) w.openAddonPanel(w.addons[k], target)
     }
-    else if (verb === "dark-page") showPage("darkhours")
+    else if (verb === "addon-on") {
+      var builtin = w.builtinById(arg)
+      if (builtin) w.setBuiltinOn(builtin, !w.addonOn(builtin))
+    }
+    else if (verb === "addon-page") showPage("addon:" + arg)
+    else if (verb.indexOf(".") > 0) {
+      // A built-in add-on's own control: "<add-on id>.<verb>[:<device id>]".
+      var service = w.services[verb.slice(0, verb.indexOf("."))]
+      if (service) service.run(verb.slice(verb.indexOf(".") + 1), device)
+    }
     else if (verb === "notify-more") notificationsOpen = !notificationsOpen
-    else if (verb === "dark-toggle") w.setDarkHours(!w.darkHours)
     else if (verb === "notify-low") w.saveSetting("notifyLowBattery", !w.notifyLowBattery)
     else if (verb === "notify-critical") w.saveSetting("notifyCritical", !w.notifyCritical)
     else if (verb === "notify-connection") w.saveSetting("notifyConnection", !w.notifyConnection)
     else if (verb === "hide-bar") w.saveSetting("hideWhenDisconnected", !w.hideWhenDisconnected)
     else if (verb === "low-minus") w.stepSetting("lowThreshold", w.lowThreshold, -5, 5, 50)
     else if (verb === "low-plus") w.stepSetting("lowThreshold", w.lowThreshold, 5, 5, 50)
-    else if (verb === "offset-minus") w.stepSetting("darkHoursOffset", w.darkHoursOffset, -5, -120, 120)
-    else if (verb === "offset-plus") w.stepSetting("darkHoursOffset", w.darkHoursOffset, 5, -120, 120)
-    else if (verb === "loc-zone" || verb === "loc-custom") locationModeRequested(verb === "loc-custom")
     // An action that adds or drops others (a drawer, the reset button next
     // to a switch) keeps the cursor on the control it was on.
     if (cursorIndex >= 0 && actions.indexOf(name) >= 0) cursorIndex = actions.indexOf(name)
   }
 
-  // The dark hours page owns the location field; it listens for this.
-  signal locationModeRequested(bool custom)
-
-  onPageChanged: if (w) w.twilightPreview = opened && (page === "settings" || page === "darkhours")
-
   onOpenedChanged: {
-    if (w) w.twilightPreview = opened && (page === "settings" || page === "darkhours")
     // Always start keyboard nav fresh on open. But only snap back to the
     // devices page on a real close: a Tab hand-off to another bar widget's
     // panel closes this one via closeForPopoutSwitch() first (which sets

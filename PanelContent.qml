@@ -5,7 +5,7 @@ import "icons.js" as Icons
 
 // Solaarchy panel body. Pages that swap in place: the devices (each with a
 // drawer for its own settings), the bar icon picker opened from the big icon,
-// Settings behind the gear, and the dark hours page.
+// Settings behind the gear, and a built-in add-on's own page.
 Item {
   id: content
 
@@ -16,7 +16,7 @@ Item {
 
   implicitHeight: content.view.page === "icons" ? iconsPage.implicitHeight
     : content.view.page === "settings" ? settingsPage.implicitHeight
-    : content.view.page === "darkhours" ? darkHoursPage.implicitHeight
+    : content.view.page.indexOf("addon:") === 0 ? addonPage.implicitHeight
     : mainPage.implicitHeight
 
   // ================= Devices =================
@@ -284,8 +284,8 @@ Item {
                     ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
                     : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
                       + (deviceItem.lightOn ? "off" : "on")
-                      + (content.w.darkHoursText(deviceItem.modelData) !== ""
-                         ? "\n" + content.w.darkHoursText(deviceItem.modelData) : "")
+                      + (content.w.addonTooltip(deviceItem.modelData) !== ""
+                         ? "\n" + content.w.addonTooltip(deviceItem.modelData) : "")
                   onClicked: content.w.toggleBacklight(deviceItem.modelData)
                   onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
                 }
@@ -379,10 +379,17 @@ Item {
         urgent: true
       }
 
-      MessageText {
-        visible: content.w.twilightError !== "" && content.w.darkKeyboards.length > 0
-        text: "Dark hours are paused: " + content.w.twilightError
-        urgent: true
+      // A built-in add-on's word on what it can't do right now.
+      Repeater {
+        model: content.w.builtins
+
+        MessageText {
+          required property var modelData
+          readonly property var service: content.w.services[modelData.id] || null
+          visible: text !== ""
+          text: service && service.message ? service.message : ""
+          urgent: true
+        }
       }
 
       MessageText {
@@ -452,7 +459,7 @@ Item {
     }
   }
 
-  // ================= Settings and dark hours =================
+  // ================= Settings and add-on pages =================
   SettingsPage {
     id: settingsPage
     visible: content.view.page === "settings"
@@ -460,18 +467,26 @@ Item {
     view: content.view
   }
 
-  DarkHoursPage {
-    id: darkHoursPage
-    visible: content.view.page === "darkhours"
-    w: content.w
-    view: content.view
-    // Back to what is saved each time the page is shown.
-    onVisibleChanged: if (visible) customLocation = content.w.darkHoursLocation !== ""
+  // A built-in add-on's page, built fresh each time it is shown.
+  Loader {
+    id: addonPage
+    readonly property string addonId: content.view.page.indexOf("addon:") === 0 ? content.view.page.slice(6) : ""
+    visible: addonId !== ""
+    width: parent.width
+
+    onAddonIdChanged: {
+      var addon = content.w.builtinById(addonId)
+      if (addon && addon.page !== "")
+        setSource(Util.fileUrl(addon.page), { "service": content.w.services[addon.id] || null,
+                                              "w": content.w, "view": content.view })
+      else
+        source = ""
+    }
   }
 
   // What can be set for one device alone, under its row: a section per
-  // capability something fills (dark hours on a backlit keyboard, add-ons,
-  // add-ons to come), the other capabilities on one line, and Hide. Every
+  // capability something fills (built-in add-ons, installed ones, curated
+  // ones to come), the other capabilities on one line, and Hide. Every
   // Solaarchy control goes through Panel.qml's runAction, the same path the
   // keyboard cursor takes.
   component DeviceDrawer: Rectangle {
@@ -506,42 +521,6 @@ Item {
             fontFamily: content.view.fontFamily
           }
 
-          OptionRow {
-            visible: section.modelData.builtin && content.w.darkHours
-            view: content.view
-            glyph: "󰖔"
-            label: "Dark hours"
-            caption: !drawer.device || !content.w.darkHoursFor(drawer.device) ? "Skipped for this keyboard"
-              : content.w.darkTimesText !== ""
-                ? content.w.darkTimesText.charAt(0).toUpperCase() + content.w.darkTimesText.slice(1)
-                : "On at dusk, off at dawn"
-
-            ToggleSwitch {
-              anchors.verticalCenter: parent.verticalCenter
-              checked: !!drawer.device && content.w.darkHoursFor(drawer.device)
-              foreground: content.view.fg
-              hasCursor: content.view.hasCursorOn("dark-own:" + drawer.deviceId)
-              onToggled: content.view.runAction("dark-own:" + drawer.deviceId)
-              onHovered: function(h) { content.view.hoverAction("dark-own:" + drawer.deviceId, h) }
-            }
-
-            PanelActionButton {
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: "󰅂"
-              tooltipText: "Times, offset and location"
-              foreground: content.view.fg
-              fontFamily: content.view.fontFamily
-              hasCursor: content.view.hasCursorOn("dark-page")
-              onClicked: content.view.runAction("dark-page")
-              onHovered: function(h) { content.view.hoverAction("dark-page", h) }
-            }
-          }
-
-          MessageText {
-            visible: section.modelData.builtin && !content.w.darkHours
-            text: "Dark hours is built in, switched off in Settings."
-          }
-
           Repeater {
             model: section.modelData.addons
 
@@ -557,7 +536,8 @@ Item {
 
             MessageText {
               required property var modelData
-              text: modelData.label + " is installed but turned off in Omarchy's plugins."
+              text: modelData.label + (modelData.builtin ? " is built in, switched off in Settings."
+                : " is installed but turned off in Omarchy's plugins.")
             }
           }
 
@@ -635,11 +615,15 @@ Item {
     }
   }
 
-  // What an add-on's drawer QML gets as `host` (api 1, see ADDONS.md).
+  // What an add-on's drawer QML gets as `host` (api 1, see addons/ADDONS.md).
   component AddonHost: QtObject {
     property var addon
     property var device
     readonly property int api: 1
+    // Built-in add-ons only: their service, and the panel for the keyboard
+    // cursor.
+    readonly property var service: addon && addon.builtin ? content.w.services[addon.id] || null : null
+    readonly property var view: addon && addon.builtin ? content.view : null
     readonly property color foreground: content.view.fg
     readonly property color dim: content.view.dim
     readonly property color urgent: content.view.urgent

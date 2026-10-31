@@ -5,7 +5,7 @@
   "version": "1.0.4",
   "author": "C50NK4",
   "license": "MIT",
-  "description": "Every connected Logitech device at a glance in the Omarchy bar: battery per device, live connect and disconnect, low-battery alerts, the keyboard backlight and dark hours, read through Solaar. Add-ons can extend each device's drawer.",
+  "description": "Every connected Logitech device at a glance in the Omarchy bar: battery per device, live connect and disconnect, low-battery alerts and the keyboard backlight, read through Solaar. Add-ons extend each device's drawer; the built-in Circadian lights the keyboard from dusk to dawn.",
   "homepage": "https://github.com/C50NK4/Solaarchy",
   "repository": "https://github.com/C50NK4/Solaarchy",
   "kinds": [
@@ -30,9 +30,10 @@
       "notifyLowBattery": true,
       "notifyCritical": true,
       "notifyConnection": false,
-      "darkHours": false,
-      "darkHoursOffset": 0,
-      "darkHoursLocation": "",
+      "circadian": false,
+      "circadianOffset": 0,
+      "circadianLocation": "",
+      "rainbowMockup": false,
       "devices": {}
     },
     "schema": [
@@ -115,28 +116,35 @@
         "defaultValue": true
       },
       {
-        "key": "darkHours",
+        "key": "circadian",
         "type": "boolean",
-        "label": "Dark hours",
+        "label": "Circadian",
         "description": "Built-in add-on: turn every backlit keyboard's light on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn. A keyboard's drawer in the panel can skip it.",
         "defaultValue": false
       },
       {
-        "key": "darkHoursOffset",
+        "key": "circadianOffset",
         "type": "integer",
-        "label": "Dark hours offset (minutes)",
-        "description": "Widens the dark hours on both ends: 30 turns the light on 30 minutes before dusk and off 30 minutes after dawn. Negative narrows them.",
+        "label": "Circadian timing (minutes)",
+        "description": "Moves both switches: 30 turns the light on 30 minutes before dusk and off 30 minutes after dawn. Negative: later on, earlier off.",
         "min": -120,
         "max": 120,
         "step": 5,
         "defaultValue": 0
       },
       {
-        "key": "darkHoursLocation",
+        "key": "circadianLocation",
         "type": "string",
-        "label": "Dark hours location",
-        "description": "Latitude and longitude, for example 48.21, 16.37 (south and west negative). Empty uses your timezone's city, which can be hundreds of kilometres off in a wide timezone.",
+        "label": "Circadian location",
+        "description": "Latitude and longitude, for example 48.21, 16.37 (south and west negative). Empty uses Omarchy's weather location (omarchy-weather-location --set), else your timezone's city.",
         "defaultValue": ""
+      },
+      {
+        "key": "rainbowMockup",
+        "type": "boolean",
+        "label": "Rainbow LED (experimental)",
+        "description": "Built-in experimental add-on: a greyed mock-up of a colour control in each lit device's drawer. It changes nothing.",
+        "defaultValue": false
       }
     ]
   }

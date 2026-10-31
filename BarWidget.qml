@@ -19,8 +19,9 @@ import "icons.js" as Icons
 //     connecting and disconnecting, and receivers coming and going
 //   - the backlight switch runs `solaar config`, which hands the change to a
 //     running Solaar GUI so it is saved and re-applied when the keyboard wakes
-//   - dark hours: solaarchy-twilight.py works out civil dusk and dawn, and the
-//     same backlight switch runs once at each
+//   - built-in add-ons live in addons/, each in its own folder (see
+//     addons/ADDONS.md); Circadian runs the same backlight switch at dusk and
+//     dawn
 BarWidget {
   id: root
   moduleName: "io.github.c50nk4.solaarchy"
@@ -60,13 +61,8 @@ BarWidget {
   // Asleep and switched off look the same, so a device is announced as gone
   // only after this long without a live link.
   readonly property int goneAfterMs: 300000
-  readonly property string twilightPath: localPath("solaarchy-twilight.py")
-  readonly property bool darkHours: boolSetting("darkHours", false)
-  readonly property int darkHoursOffset: intSetting("darkHoursOffset", 0, -120, 120)
-  readonly property string darkHoursLocation: String(cfg("darkHoursLocation", "")).trim()
-  // Per-device choices by device id, from each device's drawer:
-  // {"<id>": {"darkHours": false, "hidden": true}}; darkHours false skips
-  // that keyboard.
+  // Per-device choices by device id, from each device's drawer, built-in
+  // add-ons' included: {"<id>": {"hidden": true, "circadian": false}}.
   readonly property var deviceSettings: {
     var all = cfg("devices", null)
     return Util.isPlainObject(all) ? all : ({})
@@ -187,21 +183,8 @@ BarWidget {
   // Device id -> 0/1 while a backlight switch to off/on is in flight
   // (optimistic UI); empty when idle.
   property var pendingBacklight: ({})
-  // solaarchy-twilight.py's last answer ({dark, until, dusk, dawn, darkToday, ...}).
-  property var twilight: null
-  property string twilightError: ""
-  // Dark hours switch each keyboard once per dusk and dawn, so a manual
-  // switch in between stands until the next one. darkApplied: device id ->
-  // the state last applied (saved, so a shell restart doesn't redo it);
-  // darkFailed: ids whose switch failed, left until the next twilight check;
-  // darkSwitching: {id, dark} being written.
-  property var darkApplied: ({})
-  property var darkFailed: ({})
-  property var darkSwitching: null
-  property bool twilightQueued: false
-  // Set by the panel while its Settings or dark hours page is open, so the
-  // times show even with dark hours off.
-  property bool twilightPreview: false
+  // Called with true or false when the running backlight switch ends.
+  property var backlightDone: null
   property bool refreshQueued: false
   // Settings changed in the panel show at once while `omarchy bar set`
   // round-trips through shell.json; each is dropped as the shell reports it
@@ -210,6 +193,11 @@ BarWidget {
 
   readonly property bool refreshing: statusProc.running
   readonly property bool backlightBusy: backlightProc.running
+  // The panel's page while it is open, else "": a built-in add-on can do
+  // its work only while its page or Settings shows.
+  readonly property string panelPage: opened ? String(panelLoader.item.page) : ""
+  // Each read that landed, for built-in add-ons to act on.
+  signal statusApplied()
 
   // Right-clicking the bar icon toggles this device. Prefer one that is
   // online: the same keyboard can stay paired to a receiver while it is
@@ -584,7 +572,7 @@ BarWidget {
     checkLowBattery()
     checkConnections(paired)
     saveState()
-    applyDarkHours()
+    statusApplied()
   }
 
   // Warn once per discharge, and once more at criticalLevel. Only fresh
@@ -685,8 +673,7 @@ BarWidget {
       receivers: receivers,
       devices: devices,
       lowNotified: lowNotified,
-      announcedGone: announcedGone,
-      darkApplied: darkApplied
+      announcedGone: announcedGone
     }) + "\n"
     if (text === savedText) return
     savedText = text
@@ -703,18 +690,6 @@ BarWidget {
       lowNotified = Object.assign({}, doc.lowNotified, lowNotified)
     if (Util.isPlainObject(doc.announcedGone))
       announcedGone = Object.assign({}, doc.announcedGone, announcedGone)
-    if (Util.isPlainObject(doc.darkApplied)) {
-      darkApplied = Object.assign({}, doc.darkApplied, darkApplied)
-    } else if (typeof doc.darkApplied === "boolean" && Array.isArray(doc.devices)) {
-      // The first dark hours build kept one state for its one keyboard.
-      var applied = Object.assign({}, darkApplied)
-      for (var k = 0; k < doc.devices.length; k++) {
-        var kb = doc.devices[k]
-        if (Util.isPlainObject(kb) && kb.backlight && applied[String(kb.id)] === undefined)
-          applied[String(kb.id)] = doc.darkApplied
-      }
-      darkApplied = applied
-    }
     if (loaded || !Array.isArray(doc.devices)) return
     if (Array.isArray(doc.receivers)) receivers = doc.receivers.map(String)
     var restored = []
@@ -780,7 +755,9 @@ BarWidget {
     setBacklight(device, backlightOn(device) ? 0 : 1)
   }
 
-  function setBacklight(device, target) {
+  // done, if given, is called with true or false once the switch ends.
+  function setBacklight(device, target, done) {
+    backlightDone = done || null
     var next = Object.assign({}, pendingBacklight)
     next[device.id] = target
     pendingBacklight = next
@@ -798,129 +775,11 @@ BarWidget {
     backlightProc.running = true
   }
 
-  // Dark hours for one keyboard: the add-on's switch, unless the keyboard is
-  // skipped in its drawer.
-  function darkHoursFor(device) { return darkHours && !darkSkipped(device) }
-
-  function darkSkipped(device) { return deviceSetting(device, "darkHours") === false }
-
-  // The backlit keyboards dark hours switches, one row per unit.
-  readonly property var darkKeyboards: {
-    var seen = {}
-    var out = []
-    for (var i = 0; i < shown.length; i++) {
-      var d = shown[i]
-      if (!d.backlight || !darkHoursFor(d) || seen[String(d.id)]) continue
-      seen[String(d.id)] = true
-      out.push(d)
-    }
-    return out
-  }
-  readonly property var backlitKeyboards: shown.filter(function(d) { return !!d.backlight })
-  readonly property bool twilightActive: darkHours || twilightPreview
-
-  // Switching dark hours on applies the current state at once, not at the
-  // next dusk or dawn: forget what was last applied to the keyboards it
-  // turns on for.
-  function forgetApplied(list) {
-    var next = Object.assign({}, darkApplied)
-    for (var i = 0; i < list.length; i++) delete next[String(list[i].id)]
-    darkApplied = next
-  }
-
-  function setDarkHours(on) {
-    if (on && !darkHours)
-      forgetApplied(backlitKeyboards.filter(function(d) { return !darkSkipped(d) }))
-    saveSetting("darkHours", on)
-  }
-
-  // follow: false skips this keyboard, true follows dark hours again.
-  function setDeviceDarkHours(device, follow) {
-    if (follow && darkHours && !darkHoursFor(device)) forgetApplied([device])
-    saveDeviceSetting(device, "darkHours", follow ? undefined : false)
-  }
-
-  // The command is built here, not bound: a settings change handler runs
-  // before the binding would have caught up, and the helper got the old value.
-  function runTwilight() {
-    if (!twilightActive) return
-    if (twilightProc.running) { twilightQueued = true; return }
-    twilightProc.command = ["/usr/bin/python3", twilightPath, String(darkHoursOffset), darkHoursLocation]
-    twilightProc.running = true
-  }
-
-  function applyTwilight(raw) {
-    var doc = null
-    try { doc = JSON.parse(String(raw).trim()) } catch (e) { doc = { error: "could not work out dusk and dawn" } }
-    // Asked again at the next switch, and at least every 10 minutes, which
-    // also catches a dusk or dawn that passed while the computer slept.
-    var wait = doc.until ? doc.until * 1000 - Date.now() + 2000 : 600000
-    twilightTimer.interval = Math.max(5000, Math.min(600000, wait))
-    if (twilightActive) twilightTimer.restart()
-    twilightError = doc.error ? String(doc.error) : ""
-    twilight = doc.error ? null : doc
-    darkFailed = ({})
-    applyDarkHours()
-  }
-
-  // One keyboard at a time: the refresh after each switch comes back here
-  // for the next one.
-  function applyDarkHours() {
-    if (!twilight || backlightProc.running) return
-    var dark = twilight.dark
-    var settled = false
-    for (var i = 0; i < shown.length; i++) {
-      var d = shown[i]
-      var id = String(d.id)
-      if (!d.backlight || !darkHoursFor(d) || darkApplied[id] === dark || darkFailed[id]) continue
-      if (!isLive(d)) continue  // retried after the next read
-      if (backlightOn(d) === dark) {
-        darkApplied[id] = dark
-        settled = true
-        continue
-      }
-      darkSwitching = { "id": id, "dark": dark }
-      setBacklight(d, dark ? 1 : 0)
-      break
-    }
-    if (settled) saveState()
-  }
-
   // Counting starts when the notices are switched on: a device asleep for
   // hours is not announced right away.
   onNotifyConnectionChanged: {
     offlineSince = ({})
     wasLive = ({})
-  }
-
-  onTwilightActiveChanged: {
-    if (twilightActive) runTwilight()
-    else twilightTimer.stop()
-  }
-  onDarkHoursOffsetChanged: runTwilight()
-  onDarkHoursLocationChanged: runTwilight()
-  // Switched on, in the panel or from the command line: applies at once.
-  onDarkHoursChanged: applyDarkHours()
-  onDeviceSettingsChanged: applyDarkHours()
-
-  readonly property string darkTimesText: !twilight ? ""
-    : twilight.dusk && twilight.dawn ? "on at " + twilight.dusk + ", off at " + twilight.dawn
-    : twilight.dark ? "dark all day" : "light all day"
-
-  function darkHoursText(device) {
-    return darkHoursFor(device) && darkTimesText !== "" ? "Dark hours: " + darkTimesText : ""
-  }
-
-  // Minutes since midnight, and a Unix time, as local "HH:MM".
-  function clockText(minute) {
-    var h = Math.floor(minute / 60) % 24
-    var m = Math.round(minute % 60)
-    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m
-  }
-
-  function timeText(seconds) {
-    var d = new Date(seconds * 1000)
-    return clockText(d.getHours() * 60 + d.getMinutes())
   }
 
   // ---- Capabilities and add-ons ----
@@ -957,6 +816,83 @@ BarWidget {
     for (var i = 0; i < categories.length; i++)
       if (categories[i].id === id) return categories[i].label
     return id
+  }
+
+  // Built in: the folders under addons/, each with a solaarchy-addon.json
+  // like any add-on's, plus its on/off key in Solaarchy's own settings (see
+  // addons/ADDONS.md). Read once at start, listed in this order.
+  readonly property var builtinIds: ["circadian", "rainbow"]
+  property var builtins: []
+  // Built-in add-on id -> its service: the part that runs for as long as the
+  // widget does.
+  property var services: ({})
+
+  function addBuiltin(id, text) {
+    if (builtinById(id)) return
+    var spec = null
+    try { spec = JSON.parse(text) } catch (e) {}
+    if (!Util.isPlainObject(spec) || typeof spec.setting !== "string") {
+      console.warn("Solaarchy: addons/" + id + "/solaarchy-addon.json is not usable")
+      return
+    }
+    var dir = localPath("addons/" + id)
+    var addon = {
+      "id": id,
+      "builtin": true,
+      "dir": dir,
+      "category": spec.category,
+      "features": Array.isArray(spec.features) ? spec.features : [],
+      "label": spec.label || id,
+      "icon": spec.icon || "",
+      "description": spec.description || "",
+      "experimental": spec.experimental === true,
+      "setting": spec.setting,
+      "drawer": spec.drawer ? dir + "/" + spec.drawer : "",
+      "page": spec.page ? dir + "/" + spec.page : "",
+      "panel": false
+    }
+    if (spec.service) {
+      var component = Qt.createComponent(Util.fileUrl(dir + "/" + spec.service))
+      var service = component.status === Component.Ready
+        ? component.createObject(root, { "host": root, "addon": addon }) : null
+      if (service) {
+        var next = Object.assign({}, services)
+        next[id] = service
+        services = next
+      } else {
+        console.warn("Solaarchy: " + id + ": " + component.errorString())
+      }
+    }
+    builtins = builtins.concat([addon]).sort(function(a, b) {
+      return builtinIds.indexOf(a.id) - builtinIds.indexOf(b.id)
+    })
+  }
+
+  function builtinById(id) {
+    for (var i = 0; i < builtins.length; i++)
+      if (builtins[i].id === id) return builtins[i]
+    return null
+  }
+
+  // A built-in by its own setting, an installed add-on by Omarchy's plugin switch.
+  function addonOn(addon) { return addon.builtin ? boolSetting(addon.setting, false) : !!addon.enabled }
+
+  // Through the service when it has one: Circadian applies at once.
+  function setBuiltinOn(addon, on) {
+    var service = services[addon.id]
+    if (service && typeof service.setOn === "function") service.setOn(on)
+    else saveSetting(addon.setting, on)
+  }
+
+  // What built-in add-ons add to a keyboard's bulb tooltip, a line each.
+  function addonTooltip(device) {
+    var lines = []
+    for (var i = 0; i < builtins.length; i++) {
+      var service = services[builtins[i].id]
+      var line = service && typeof service.tooltipFor === "function" ? service.tooltipFor(device) : ""
+      if (line) lines.push(line)
+    }
+    return lines.join("\n")
   }
 
   // Curated: add-ons reviewed for Solaarchy, listed (and shown greyed where
@@ -1006,38 +942,39 @@ BarWidget {
     }
   }
 
-  // Add-ons that fit a device: their category, and (when they name any) at
-  // least one of their features on it.
+  // An add-on fits a device with at least one of its features, or of its
+  // category's when it names none. A built-in's service can decide instead:
+  // Circadian fits exactly the keyboards it switches.
   function addonFits(addon, device, category) {
     if (addon.category !== category) return false
-    if (!addon.features || addon.features.length === 0) return true
+    var service = services[addon.id]
+    if (service && typeof service.fits === "function") return service.fits(device)
     var have = featuresOf(device) || []
-    for (var i = 0; i < addon.features.length; i++)
-      if (have.indexOf(addon.features[i]) >= 0) return true
-    return false
+    var wanted = addon.features && addon.features.length > 0 ? addon.features
+      : categories.filter(function(c) { return c.id === category })[0].features
+    return wanted.some(function(f) { return have.indexOf(f) >= 0 })
   }
 
   // The drawer's sections for one device, in category order:
-  // {id, label, builtin, addons, off, known}. Plus "also": the labels of
-  // categories the device has but nothing fills yet.
+  // {id, label, addons, off, known}, built-ins first. Plus "also": the labels
+  // of categories the device has but nothing fills yet.
   function drawerSections(device) {
     var have = featuresOf(device) || []
+    var all = builtins.concat(addons)
     var sections = []
     var also = []
     for (var c = 0; c < categories.length; c++) {
       var cat = categories[c]
       var present = cat.features.some(function(f) { return have.indexOf(f) >= 0 })
-      var builtin = cat.id === "lighting" && !!device.backlight
-      if (!present && !builtin) continue
-      var fit = addons.filter(function(a) { return addonFits(a, device, cat.id) })
-      var on = fit.filter(function(a) { return a.enabled })
-      var off = fit.filter(function(a) { return !a.enabled })
-      var known = fit.length > 0 ? [] : curatedAddons.filter(function(k) {
+      // An experimental built-in stays out of sight while it is off.
+      var fit = all.filter(function(a) { return addonFits(a, device, cat.id) && (!a.experimental || addonOn(a)) })
+      var known = fit.length > 0 || !present ? [] : curatedAddons.filter(function(k) {
         return k.category === cat.id && !installedAddon(k.id)
       })
-      if (builtin || fit.length > 0 || known.length > 0)
-        sections.push({ "id": cat.id, "label": cat.label, "builtin": builtin, "addons": on, "off": off, "known": known })
-      else
+      if (fit.length > 0 || known.length > 0)
+        sections.push({ "id": cat.id, "label": cat.label, "addons": fit.filter(addonOn),
+                        "off": fit.filter(function(a) { return !addonOn(a) }), "known": known })
+      else if (present)
         also.push(cat.label)
     }
     return { "sections": sections, "also": also }
@@ -1250,35 +1187,24 @@ BarWidget {
         root.pendingBacklight = ({})
         root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not switch the backlight"
       }
-      var dark = root.darkSwitching
-      if (dark !== null) {
-        root.darkSwitching = null
-        // A failed switch is retried with the next twilight check, not the
-        // next read, which would loop on a keyboard that keeps refusing.
-        if (exitCode === 0) root.darkApplied[dark.id] = dark.dark
-        else root.darkFailed[dark.id] = true
-        root.saveState()
-      }
+      var done = root.backlightDone
+      root.backlightDone = null
+      if (done) done(exitCode === 0)
       root.refresh()
     }
   }
 
-  Process {
-    id: twilightProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.applyTwilight(text)
+  // One blocking read per built-in, so they are all there before the panel
+  // first opens.
+  Instantiator {
+    model: root.builtinIds
+    delegate: FileView {
+      required property string modelData
+      path: root.localPath("addons/" + modelData + "/solaarchy-addon.json")
+      blockLoading: true
+      printErrors: false
+      onLoaded: root.addBuiltin(modelData, text())
     }
-    onExited: {
-      if (!root.twilightQueued) return
-      root.twilightQueued = false
-      Qt.callLater(root.runTwilight)
-    }
-  }
-
-  Timer {
-    id: twilightTimer
-    onTriggered: root.runTwilight()
   }
 
   Process {
@@ -1340,17 +1266,11 @@ BarWidget {
     repeat: true
     onTriggered: {
       root.nowTick++
-      // Timers stop counting while the computer sleeps; a wall-clock check
-      // here switches within 30 s of waking past a dusk or dawn.
-      if (root.twilight && root.twilight.until && Date.now() >= root.twilight.until * 1000) root.runTwilight()
       if (root.notifyConnection) root.checkConnections(null)
     }
   }
 
-  Component.onCompleted: {
-    refresh()
-    runTwilight()
-  }
+  Component.onCompleted: refresh()
 
   // The file dialog for the "+" tile. Exit 0 prints the installed file's name,
   // 1 means the dialog was cancelled, 2 prints why it failed on stderr.
