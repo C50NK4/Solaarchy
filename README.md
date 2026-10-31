@@ -24,7 +24,8 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   the device can do, grouped by capability as room for [add-ons](ADDONS.md)
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
-- The widget hides itself while no receiver is plugged in (optional)
+- The widget hides itself while no receiver is plugged in and no Logitech
+  device is connected or paired over Bluetooth (optional)
 - Last readings survive shell restarts
 
 Solaarchy ships no vendor logos and is not affiliated with, or endorsed by,
@@ -141,7 +142,7 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `notifyCritical`       | `true`   | Notify once more at 5 %                                                            |
 | `notifyConnection`     | `false`  | Notify when a device has had no link for 5 minutes, and when it comes back         |
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
-| `hideWhenDisconnected` | `true`   | Hide the widget while no Logitech receiver or device is connected                 |
+| `hideWhenDisconnected` | `true`   | Hide the widget while no receiver is plugged in and no Logitech device is connected or paired over Bluetooth |
 | `darkHours`            | `false`  | Built-in add-on: backlight on at civil dusk, off at civil dawn, see below          |
 | `blink`                | `false`  | Built-in add-on: a Blink switch in each backlit keyboard's drawer                  |
 | `darkHoursOffset`      | `0`      | Minutes added to the dark hours on both ends (−120 to 120)                         |
@@ -311,6 +312,9 @@ Solaarchy does:
   read-only and listens for connect/disconnect messages and USB hotplug
   events. It never writes to a device. The kernel stops it together with the
   shell.
+- **Bluetooth pairings:** each read also asks BlueZ, read-only over the system
+  bus (`busctl … GetManagedObjects`), how many Logitech devices are paired, so
+  the widget stays while a Bluetooth keyboard sleeps.
 - **Changing things:** only when you ask. Toggling the backlight runs
   `solaar config <device> backlight …`; with dark hours on, the same command
   runs once at dusk and once at dawn, and Blink runs it every few seconds
@@ -336,8 +340,8 @@ Solaarchy does:
 - **"solaar library unavailable"**: Solaar isn't installed, see Requirements.
 - **"could not open 046d:…: Permission denied"**: Solaar's udev rule hasn't
   applied yet. Replug the receiver or log out and back in.
-- **The widget doesn't appear**: nothing Logitech is connected and
-  `hideWhenDisconnected` is on. Run
+- **The widget doesn't appear**: no receiver is plugged in, no Logitech device
+  is connected or paired over Bluetooth, and `hideWhenDisconnected` is on. Run
   `omarchy plugin list --json | jq '.[] | select(.id == "io.github.c50nk4.solaarchy")'`
   to check that it's enabled, and `qs log -p "$OMARCHY_PATH/shell" --tail 100`
   for errors.

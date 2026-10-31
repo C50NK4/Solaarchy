@@ -7,10 +7,12 @@ changed and Solaar's configuration file is never written; backlight changes go
 through `solaar config` so the running Solaar GUI records them and does not
 undo them when the keyboard wakes.
 
-Output: {"receivers": [...], "devices": [...], "listed": [...], "warnings": [...]},
-or {"error": "..."} when nothing at all could be read. "listed" holds the hidraw
-path of every receiver whose pairings were all read, so a device missing from
-one of them is no longer paired to it.
+Output: {"receivers": [...], "devices": [...], "listed": [...], "warnings": [...],
+"bluetooth": N}, or {"error": "..."} when nothing at all could be read. "listed"
+holds the hidraw path of every receiver whose pairings were all read, so a
+device missing from one of them is no longer paired to it. "bluetooth" counts
+the Logitech devices BlueZ has paired, connected or not (0 when BlueZ can't be
+asked): Solaar only sees a Bluetooth device while it is connected.
 
 With --known ID,ID,... (device ids as printed, "" for none), every online
 device not in that list also gets "features": the sorted Solaar names of the
@@ -26,6 +28,7 @@ import os
 import signal
 import stat
 import struct
+import subprocess
 import sys
 import time
 
@@ -58,10 +61,34 @@ def _emit(doc):
     _stdout.flush()
 
 
+def _bluetooth_paired():
+    """Logitech devices BlueZ has paired, read-only over the system bus."""
+    try:
+        out = subprocess.run(
+            ["busctl", "--system", "--json=short", "--timeout=2", "call", "org.bluez", "/",
+             "org.freedesktop.DBus.ObjectManager", "GetManagedObjects"],
+            capture_output=True, text=True, timeout=4, check=True).stdout
+        objects = json.loads(out)["data"][0]
+    except Exception:
+        return 0
+    count = 0
+    for interfaces in objects.values():
+        dev = interfaces.get("org.bluez.Device1", {})
+        modalias = str(dev.get("Modalias", {}).get("data", "")).lower()
+        if dev.get("Paired", {}).get("data") and modalias.startswith(("usb:v046d", "bluetooth:v046d")):
+            count += 1
+    return count
+
+
+# Asked before the device lock, so a slow BlueZ never holds up a device read.
+_bluetooth = _bluetooth_paired()
+
+
 def _result():
     if not _devices and not _receivers and _warnings:
         return {"error": "; ".join(_warnings)}
-    return {"receivers": _receivers, "devices": _devices, "listed": _listed, "warnings": _warnings}
+    return {"receivers": _receivers, "devices": _devices, "listed": _listed, "warnings": _warnings,
+            "bluetooth": _bluetooth}
 
 
 def _timeout(*_):

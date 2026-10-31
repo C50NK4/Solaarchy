@@ -259,10 +259,15 @@ BarWidget {
   }
   readonly property bool anyLow: lowest !== null && lowest.battery.level <= lowThreshold
 
-  // Anything Logitech to show, or an error worth showing. Before the first
-  // read this comes from the saved state, so a desk without a receiver
-  // doesn't flash the widget in at login.
-  readonly property bool hardwarePresent: devices.length > 0 || receivers.length > 0 || lastError !== ""
+  // Anything Logitech here now, or an error worth showing: a receiver plugged
+  // in, a device connected directly, or one BlueZ has paired (a Bluetooth
+  // device that sleeps is gone from Solaar's view, not unpaired). The saved
+  // devices don't count, or the widget would never hide again once one was
+  // seen. Before the first read the saved state decides, so the widget
+  // doesn't flash in or out at login.
+  property bool presentNow: false
+  readonly property bool hardwarePresent: lastError !== ""
+    || (loaded ? presentNow : devices.length > 0 || receivers.length > 0)
 
   function localPath(name) {
     return decodeURIComponent(Qt.resolvedUrl(name).toString().replace(/^file:\/\//, ""))
@@ -436,6 +441,9 @@ BarWidget {
       return
     }
     warnings = Array.isArray(doc.warnings) ? doc.warnings.map(String) : []
+    presentNow = (Array.isArray(doc.receivers) && doc.receivers.length > 0)
+      || (Array.isArray(doc.devices) && doc.devices.some(function(d) { return d && !d.receiver && d.online }))
+      || Number(doc.bluetooth) > 0
 
     // A list, not an id map: the same id can be online on one link and asleep
     // on another, and each has to keep its own name and last reading.
