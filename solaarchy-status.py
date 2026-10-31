@@ -11,8 +11,15 @@ Output: {"receivers": [...], "devices": [...], "listed": [...], "warnings": [...
 or {"error": "..."} when nothing at all could be read. "listed" holds the hidraw
 path of every receiver whose pairings were all read, so a device missing from
 one of them is no longer paired to it.
+
+With --known ID,ID,... (device ids as printed, "" for none), every online
+device not in that list also gets "features": the sorted Solaar names of the
+features in its HID++ 2.0 table, [] for a HID++ 1.0 device. The key is left out
+when the table did not read the same twice. Without --known, no feature table
+is read at all.
 """
 
+import argparse
 import fcntl
 import json
 import os
@@ -29,6 +36,21 @@ _receivers = []
 _devices = []
 _listed = []
 _warnings = []
+
+
+def _known_ids():
+    """Ids given with --known; None without it, and then no feature table is read."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--known",
+        metavar="ID,ID,...",
+        help="also list the HID++ features of every online device not in this list ('' for none)",
+    )
+    known = parser.parse_args().known
+    return None if known is None else set(known.split(","))
+
+
+_known = _known_ids()
 
 
 def _emit(doc):
@@ -222,6 +244,46 @@ def _forget_features(dev):
     dev._backlight = None
 
 
+def _feature_table(dev):
+    """Sorted names of the features in dev's HID++ 2.0 table that users may see.
+
+    A fresh FeaturesArray each time, so a second read really asks the device
+    again (dev.features would answer from its cache) and the map the rest of
+    _device() relies on is left alone. None unless every slot answers: half a
+    table is never reported, and a device that stops answering mid-table costs
+    one request timeout, not one per remaining slot.
+    """
+    if dev.protocol < 2.0:
+        return []  # HID++ 1.0 has fixed registers, no feature table
+    table = hidpp20.FeaturesArray(dev)
+    if not table:  # asks FEATURE_SET how many slots there are
+        return None
+    found = []
+    for index in range(table.count):
+        feature = table.get_feature(index)
+        if feature is None:
+            return None
+        found.append(feature)
+    return sorted(
+        f.name
+        for f in found
+        # Names Solaar knows only (unknown ids come back as "unknown:XXXX"),
+        # minus ROOT/FEATURE_SET and those flagged hidden (0x40) or engineering (0x20).
+        if isinstance(f, SupportedFeature)
+        and f not in (SupportedFeature.ROOT, SupportedFeature.FEATURE_SET)
+        and not table.flags.get(f, 0) & 0x60
+    )
+
+
+def _features(dev):
+    # The same reply race as in _consistent(): only a table read the same
+    # twice in a row counts; otherwise the caller asks again next time.
+    first = _safe(lambda: _feature_table(dev))
+    if first is not None and first == _safe(lambda: _feature_table(dev)):
+        return first
+    return None
+
+
 def _safe(fn, fallback=None):
     try:
         return fn()
@@ -288,6 +350,10 @@ def _device(dev, receiver_name, path):
             if _safe(lambda: _consistent(dev), False):
                 entry["name"], entry["fullName"], entry["kind"] = name, full_name, kind
                 entry["battery"], entry["backlight"] = battery, backlight
+                if _known is not None and entry["id"] not in _known:
+                    features = _features(dev)
+                    if features is not None:
+                        entry["features"] = features
                 break
             _forget_features(dev)
             time.sleep(0.3)
