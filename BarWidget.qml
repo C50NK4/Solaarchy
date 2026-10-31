@@ -576,6 +576,7 @@ BarWidget {
     checkLowBattery()
     checkConnections(paired)
     saveState()
+    blinkWaiting = ({})
     stepBlinkRestore()
     applyDarkHours()
   }
@@ -930,7 +931,11 @@ BarWidget {
   // back is saved, so a restart mid-blink still restores the light.
   property var blinking: ({})
   property var blinkRestore: ({})
-  property bool blinkSwitching: false
+  // blinkSwitch: Blink's own switch being written, {id, before, restore}
+  // (before: the bulb's state until then). blinkWaiting: ids whose restore
+  // failed, left until the next read so a dozing keyboard isn't hammered.
+  property var blinkSwitch: null
+  property var blinkWaiting: ({})
   property int blinkTurn: 0
 
   function isBlinking(device) { return !!device && blinking.hasOwnProperty(String(device.id)) }
@@ -967,18 +972,23 @@ BarWidget {
   onBlinkChanged: if (!blink) for (var id in blinking) setBlinking(id, false)
 
   // Puts one keyboard back; the read after that switch comes back here for
-  // the next. One asleep now is put back once it wakes.
+  // the next. One asleep now is put back once it wakes. It leaves
+  // blinkRestore only when the switch went through (backlightProc).
   function stepBlinkRestore() {
     if (backlightProc.running) return
     for (var id in blinkRestore) {
       var d = liveBacklit(id)
-      if (!d) continue
+      if (!d || blinkWaiting[id]) continue
       var on = blinkRestore[id]
+      if (backlightOn(d) !== on) {
+        blinkSwitch = { "id": id, "before": pendingBacklight[id], "restore": true }
+        setBacklight(d, on ? 1 : 0)
+        return
+      }
       var back = Object.assign({}, blinkRestore)
       delete back[id]
       blinkRestore = back
       saveState()
-      if (backlightOn(d) !== on) { setBacklight(d, on ? 1 : 0); return }
     }
   }
 
@@ -991,7 +1001,7 @@ BarWidget {
       var d = liveBacklit(ids[(blinkTurn + k) % ids.length])
       if (!d) continue
       blinkTurn = (blinkTurn + k + 1) % ids.length
-      blinkSwitching = true
+      blinkSwitch = { "id": String(d.id), "before": pendingBacklight[d.id], "restore": false }
       setBacklight(d, backlightOn(d) ? 0 : 1)
       return
     }
@@ -1320,13 +1330,28 @@ BarWidget {
   Process {
     id: backlightProc
     onExited: function(exitCode) {
-      // A blink step: no read after it (the bulb already shows the target)
-      // and no error, since a keyboard falling asleep just misses one.
-      if (root.blinkSwitching) {
-        root.blinkSwitching = false
-        if (exitCode !== 0) root.pendingBacklight = ({})
-        root.stepBlinkRestore()
-        return
+      // Blink's own switches show no error: a keyboard falling asleep just
+      // misses one, and the bulb goes back to the state it really has. A
+      // step needs no read after it (the bulb already shows the target); a
+      // restore that went through gets one, a failed one waits for the next.
+      var blinkSwitch = root.blinkSwitch
+      if (blinkSwitch !== null) {
+        root.blinkSwitch = null
+        var id = blinkSwitch.id
+        if (exitCode !== 0) {
+          var pending = Object.assign({}, root.pendingBacklight)
+          if (blinkSwitch.before === undefined) delete pending[id]
+          else pending[id] = blinkSwitch.before
+          root.pendingBacklight = pending
+          if (blinkSwitch.restore) root.blinkWaiting[id] = true
+          else root.stepBlinkRestore()
+          return
+        }
+        if (!blinkSwitch.restore) { root.stepBlinkRestore(); return }
+        var back = Object.assign({}, root.blinkRestore)
+        delete back[id]
+        root.blinkRestore = back
+        root.saveState()
       }
       if (exitCode !== 0) {
         root.pendingBacklight = ({})
