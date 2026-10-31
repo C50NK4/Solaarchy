@@ -667,7 +667,8 @@ Item {
     property string tooltip: ""
     property string action: ""
     property bool available: true
-    readonly property bool hot: available && (labelMouse.containsMouse || content.view.hasCursorOn(action))
+    readonly property bool hasCursor: available && content.view.hasCursorOn(action)
+    readonly property bool hot: available && (labelMouse.containsMouse || hasCursor)
     implicitWidth: labelRow.implicitWidth + Style.space(12)
     implicitHeight: Math.max(Style.space(22), labelRow.implicitHeight + Style.space(4))
     radius: Style.cornerRadius

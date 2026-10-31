@@ -90,6 +90,7 @@ Panel {
     if (name === "darkhours" && page !== "darkhours") backPage = page
     page = name
     cursorIndex = -1
+    scroll.contentY = 0
     // Leaving the dark hours page from its location field must not leave
     // the keys with a hidden field.
     restoreFocus()
@@ -100,6 +101,30 @@ Panel {
   function toggleDrawer(id) {
     drawerId = drawerId === String(id) ? "" : String(id)
   }
+
+  // On a short screen the card scrolls: keep the cursor's control in view.
+  // Every cursor target carries a hasCursor flag, so one walk finds it.
+  function revealCursor() {
+    var hit = cursorItem(content.item)
+    if (!hit) return
+    var y = hit.mapToItem(content, 0, 0).y
+    var pad = Style.space(8)
+    if (y - pad < scroll.contentY) scroll.contentY = Math.max(0, y - pad)
+    else if (y + hit.height + pad > scroll.contentY + scroll.height)
+      scroll.contentY = Math.max(0, Math.min(scroll.contentHeight - scroll.height, y + hit.height + pad - scroll.height))
+  }
+
+  function cursorItem(item) {
+    if (!item || !item.visible) return null
+    if (item.hasCursor === true) return item
+    for (var i = 0; i < item.children.length; i++) {
+      var found = cursorItem(item.children[i])
+      if (found) return found
+    }
+    return null
+  }
+
+  onCursorIndexChanged: if (cursorIndex >= 0 && scroll.interactive) Qt.callLater(revealCursor)
 
   // After typing in a text field: arrows and Enter drive the cursor again.
   function restoreFocus() { keyCatcher.forceActiveFocus() }
@@ -214,13 +239,23 @@ Panel {
       onCloseRequested: root.page !== "main" ? root.goBack() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
-      // Built once the bar widget has injected itself, with both references
-      // passed at creation so no binding ever sees them unset.
-      Loader {
-        id: content
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
+      // Scrolls only when the card is clamped to a short screen (Settings
+      // with add-ons, several open sections), as the stock panels do.
+      Flickable {
+        id: scroll
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: content.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        // Built once the bar widget has injected itself, with both references
+        // passed at creation so no binding ever sees them unset.
+        Loader {
+          id: content
+          width: scroll.width
+        }
       }
     }
   }
