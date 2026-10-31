@@ -12,11 +12,18 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   right away with its last reading; one that wakes, or a receiver plugged in or
   out, triggers a fresh read. No fast polling.
 - One notification per discharge when a device drops below the low-battery
-  threshold
+  threshold, one more at 5 %, and optionally when a device disconnects or
+  comes back
 - Keyboard backlight on/off: the bulb next to each keyboard's name, or
   right-click the bar icon
+- **Dark hours:** every backlit keyboard lights up at civil dusk and goes dark
+  at civil dawn, worked out offline for where you are
+- A drawer per device: dark hours for that keyboard alone, hide the device,
+  and what the device can do, grouped by capability as room for
+  [add-ons](ADDONS.md)
+- Settings in the panel, behind the gear; the bar icon picker behind the big
+  icon; a one-click way to open Solaar
 - The widget hides itself while no receiver is plugged in (optional)
-- Bar icon picker in its own sub-panel, and a one-click way to open Solaar
 - Last readings survive shell restarts
 
 Solaarchy ships no vendor logos and is not affiliated with, or endorsed by,
@@ -88,12 +95,21 @@ omarchy plugin add https://github.com/C50NK4/Solaarchy.git --enable
 In the panel:
 
 - The **bulb** next to a keyboard's name switches its backlight.
+- The **chevron** at the end of a device's row, or a click on the row, opens
+  its drawer:
+  - dark hours for that keyboard alone
+  - **Hide this device**, for a pairing you don't care about; Settings brings
+    it back
+  - a section per capability something fills, such as an
+    [add-on](ADDONS.md), and the device's other capabilities on one line
+- The **gear** opens Settings: dark hours, notifications, the bar, hidden
+  devices and add-ons.
+- The **big icon** opens the bar icon picker.
 - **Solaar** on the DEVICES line opens Solaar, for pairing, buttons, DPI and
   everything else.
-- The **palette** next to Refresh opens the bar icon picker; the back arrow or
-  Escape returns to the devices.
 
-Arrow keys move between controls, Enter activates, and Escape closes.
+Arrow keys move between controls, Enter activates, and Escape goes back a
+page or closes.
 
 The panel can also be opened from a script:
 
@@ -103,7 +119,8 @@ omarchy-shell shell summon io.github.c50nk4.solaarchy '{}'
 
 ## Configure
 
-All settings are available in the Omarchy bar settings, or from the terminal:
+Everything below is in the panel's Settings, and every setting can also be
+set from the terminal:
 
 ```sh
 omarchy bar set io.github.c50nk4.solaarchy icon mouse
@@ -118,23 +135,38 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `customIcon`           | *(empty)*| File name of your own SVG, without `.svg`. Overrides `icon` while set              |
 | `customIconDir`        | *(empty)*| Folder scanned for your own SVGs. Empty means `~/.config/omarchy/solaarchy/icons`  |
 | `lowThreshold`         | `15`     | Battery % at or below which the icon turns urgent and a notification is sent      |
+| `notifyLowBattery`     | `true`   | Notify once per discharge below `lowThreshold`                                     |
+| `notifyCritical`       | `true`   | Notify once more at 5 %                                                            |
+| `notifyConnection`     | `false`  | Notify when a device has had no link for 5 minutes, and when it comes back         |
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
 | `hideWhenDisconnected` | `true`   | Hide the widget while no Logitech receiver or device is connected                 |
 | `darkHours`            | `false`  | Backlight on at civil dusk, off at civil dawn, see below                           |
 | `darkHoursOffset`      | `0`      | Minutes added to the dark hours on both ends (−120 to 120)                         |
 | `darkHoursLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means your timezone's city                     |
+| `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `darkHours`, `hidden`        |
+
+Connected and disconnected notifications wait 5 minutes because Solaarchy
+can't tell a device that fell asleep from one that was switched off; a
+reconnect is only announced for a device whose disconnect was.
 
 ### Dark hours
 
-With `darkHours` on, the keyboard backlight is switched on at civil dusk and
+With `darkHours` on, every backlit keyboard is switched on at civil dusk and
 off at civil dawn, when the sun is 6° below the horizon: the time it gets too
 dark to see the keys, a while after sunset and before sunrise. The keyboard
 still decides by itself when to light up, as when you switch it on by hand.
 Dark hours only make sure it is switched on when you need it, for example
 when you sit down before dawn.
 
+The dark hours page (the chevron next to its switch in Settings, or in a
+keyboard's drawer) draws today as a 24-hour strip and sets the offset and the
+location.
+
 - A switch by hand, with the bulb or a right-click, holds until the next dusk
   or dawn.
+- A keyboard's drawer can set it apart: dark hours on for it alone, or off
+  for it while the rest follow; the reset button returns it to the Settings
+  switch.
 - Dusk and dawn are worked out locally. With no `darkHoursLocation` the
   reference city of your timezone is used (Vienna for `Europe/Vienna`); set
   your own coordinates if you live far from it, since dusk moves with latitude
@@ -148,6 +180,14 @@ omarchy bar set io.github.c50nk4.solaarchy darkHours true --json
 omarchy bar set io.github.c50nk4.solaarchy darkHoursOffset 30 --json
 omarchy bar set io.github.c50nk4.solaarchy darkHoursLocation "47.07, 15.44"
 ```
+
+### Add-ons
+
+Model-specific controls, such as haptics or lighting effects, are add-ons:
+ordinary Omarchy plugins with a `solaarchy-addon.json` that puts their
+controls into a device's drawer, or opens their own panel for that device.
+[ADDONS.md](ADDONS.md) shows how to write one. Settings lists the installed
+ones. An add-on that is installed but disabled gets nothing loaded.
 
 ### Bar icons
 
@@ -229,7 +269,9 @@ Solaarchy does:
 
 - **Reading devices:** `solaarchy-status.py` uses Solaar's Python library to
   ask each device for its battery and backlight state. It runs when the panel
-  opens, after connection changes, and every `refreshIntervalSec`. It does not
+  opens, after connection changes, and every `refreshIntervalSec`. The first
+  time a device is seen awake it also reads its HID++ feature list (twice, to
+  be sure), which is kept with the device so it is not asked again. It does not
   change any device setting and never writes Solaar's configuration. Reads are
   serialized with a lock file in a directory only you can write to
   (`$XDG_RUNTIME_DIR`, else `~/.cache/solaarchy`), never a shared one like
@@ -243,8 +285,13 @@ Solaarchy does:
 - **Changing things:** only when you ask. Toggling the backlight runs
   `solaar config <device> backlight …`; with dark hours on, the same command
   runs once at dusk and once at dawn. `solaarchy-twilight.py` works out those
-  times from your settings or your timezone, offline. Picking a bar icon runs
-  `omarchy bar set … icon …`. Opening Solaar runs `uwsm-app -- solaar`.
+  times from your settings or your timezone, offline. Changing a setting in
+  the panel, or picking a bar icon, runs `omarchy bar set …`. Opening Solaar
+  runs `uwsm-app -- solaar`.
+- **Add-ons:** when the panel opens, `solaarchy-addons.py` looks for
+  `solaarchy-addon.json` in your installed plugins and asks the shell which
+  are enabled. A drawer loads an enabled add-on's QML, and its button runs
+  `omarchy-shell shell summon <add-on> …`.
 - **Files:** last readings are saved to
   `~/.local/state/omarchy/solaarchy.json`. Settings live in
   `~/.config/omarchy/shell.json` like every bar widget's.

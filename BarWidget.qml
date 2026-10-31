@@ -46,13 +46,30 @@ BarWidget {
   readonly property string helperPath: localPath("solaarchy-status.py")
   readonly property string monitorPath: localPath("solaarchy-monitor.py")
   readonly property string iconPickerPath: localPath("solaarchy-pick-icon.py")
+  readonly property string addonsPath: localPath("solaarchy-addons.py")
+  // Every device access, Solaarchy's and its add-ons', takes this flock
+  // (solaarchy-status.py's lock, in the runtime dir it prefers).
+  readonly property string lockPath: Quickshell.env("XDG_RUNTIME_DIR") + "/solaarchy-status.lock"
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
   readonly property int lowThreshold: intSetting("lowThreshold", 15, 5, 50)
   readonly property bool hideWhenDisconnected: boolSetting("hideWhenDisconnected", true)
+  readonly property bool notifyLowBattery: boolSetting("notifyLowBattery", true)
+  readonly property bool notifyCritical: boolSetting("notifyCritical", true)
+  readonly property bool notifyConnection: boolSetting("notifyConnection", false)
+  readonly property int criticalLevel: 5
+  // Asleep and switched off look the same, so a device is announced as gone
+  // only after this long without a live link.
+  readonly property int goneAfterMs: 300000
   readonly property string twilightPath: localPath("solaarchy-twilight.py")
   readonly property bool darkHours: boolSetting("darkHours", false)
   readonly property int darkHoursOffset: intSetting("darkHoursOffset", 0, -120, 120)
-  readonly property string darkHoursLocation: String(setting("darkHoursLocation", "")).trim()
+  readonly property string darkHoursLocation: String(cfg("darkHoursLocation", "")).trim()
+  // Per-device choices by device id, from each device's drawer:
+  // {"<id>": {"darkHours": true|false, "hidden": true}}.
+  readonly property var deviceSettings: {
+    var all = cfg("devices", null)
+    return Util.isPlainObject(all) ? all : ({})
+  }
   readonly property string home: Quickshell.env("HOME")
   readonly property string statePath: home + "/.local/state/omarchy/solaarchy.json"
 
@@ -106,6 +123,8 @@ BarWidget {
   // The asleep link of a unit that is online on another connection stays in
   // `devices` (and the saved state) so it can come back when the live link
   // drops. The panel lists `shown`. Both asleep, or both online, stay listed.
+  // A hidden device stays in `devices` (and the saved state), so it is still
+  // known when it comes back, but it leaves everything built on `shown`.
   readonly property var shown: {
     var live = {}
     for (var i = 0; i < devices.length; i++)
@@ -113,15 +132,34 @@ BarWidget {
     var out = []
     for (var j = 0; j < devices.length; j++) {
       var d = devices[j]
-      if (!d.online && live[String(d.id)]) continue
+      if (isHidden(d) || (!d.online && live[String(d.id)])) continue
+      out.push(d)
+    }
+    return out
+  }
+  // One entry per hidden unit, for the Settings page to bring it back.
+  readonly property var hiddenDevices: {
+    var seen = {}
+    var out = []
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (!isHidden(d) || seen[String(d.id)]) continue
+      seen[String(d.id)] = true
       out.push(d)
     }
     return out
   }
   property var receivers: []
-  // Device ids already warned about. An id is dropped once a fresh reading
-  // shows that device charging or back above the threshold.
+  // Device ids already warned about: "low", then "critical" (true: a low
+  // warning saved before the critical one existed). An id is dropped once a
+  // fresh reading shows that device charging or back above the threshold.
   property var lowNotified: ({})
+  // Connection notices, by unit id. offlineSince: when a device seen live
+  // lost its last live link; announcedGone: devices announced as
+  // disconnected, the only ones a reconnect is announced for.
+  property var offlineSince: ({})
+  property var announcedGone: ({})
+  property var wasLive: ({})
   property string savedText: ""
   // Signature of the last published `devices`, battery.readAt excluded (see
   // deviceSignature()). Lets applyStatus() skip reassigning `devices` on a
@@ -146,18 +184,26 @@ BarWidget {
   // Device id -> 0/1 while a backlight switch to off/on is in flight
   // (optimistic UI); empty when idle.
   property var pendingBacklight: ({})
-  // solaarchy-twilight.py's last answer ({dark, until, dusk, dawn, ...}).
+  // solaarchy-twilight.py's last answer ({dark, until, dusk, dawn, darkToday, ...}).
   property var twilight: null
   property string twilightError: ""
-  // Dark hours switch the backlight once per dusk and dawn, so a manual
-  // switch in between stands until the next one. darkApplied is the state
-  // last applied (saved, so a shell restart doesn't redo it); darkTarget one
-  // still waiting for a live keyboard; darkSwitching the one being written.
-  property var darkApplied: null
-  property var darkTarget: null
+  // Dark hours switch each keyboard once per dusk and dawn, so a manual
+  // switch in between stands until the next one. darkApplied: device id ->
+  // the state last applied (saved, so a shell restart doesn't redo it);
+  // darkFailed: ids whose switch failed, left until the next twilight check;
+  // darkSwitching: {id, dark} being written.
+  property var darkApplied: ({})
+  property var darkFailed: ({})
   property var darkSwitching: null
   property bool twilightQueued: false
+  // Set by the panel while its Settings or dark hours page is open, so the
+  // times show even with dark hours off.
+  property bool twilightPreview: false
   property bool refreshQueued: false
+  // Settings changed in the panel show at once while `omarchy bar set`
+  // round-trips through shell.json; each is dropped as the shell reports it
+  // back, or after a few seconds if the write never lands.
+  property var pendingSettings: ({})
 
   readonly property bool refreshing: statusProc.running
   readonly property bool backlightBusy: backlightProc.running
@@ -199,8 +245,8 @@ BarWidget {
 
   readonly property var lowest: {
     var best = null
-    for (var i = 0; i < devices.length; i++) {
-      var d = devices[i]
+    for (var i = 0; i < shown.length; i++) {
+      var d = shown[i]
       var b = d.battery
       if (b && isLive(d) && (best === null || b.level < best.battery.level)) best = d
     }
@@ -262,7 +308,7 @@ BarWidget {
   }
 
   function intSetting(name, fallback, min, max) {
-    var n = parseInt(String(setting(name, fallback)), 10)
+    var n = parseInt(String(cfg(name, fallback)), 10)
     if (!isFinite(n)) n = fallback
     return Math.max(min, Math.min(max, n))
   }
@@ -271,7 +317,65 @@ BarWidget {
   // as well as arrive as a native JS default, so a plain `!== false` would
   // read a stored "false" string as true. Compare textually instead.
   function boolSetting(name, fallback) {
-    return String(setting(name, fallback)) !== "false"
+    return String(cfg(name, fallback)) !== "false"
+  }
+
+  // A setting as the panel last chose it, else as shell.json has it.
+  function cfg(name, fallback) {
+    return pendingSettings.hasOwnProperty(name) ? pendingSettings[name] : setting(name, fallback)
+  }
+
+  // Saved like any widget setting, so the Omarchy settings UI shows it too.
+  // `later` waits for the clicks to stop (steppers), so a run of them
+  // rewrites shell.json once.
+  function saveSetting(name, value, later) {
+    var next = Object.assign({}, pendingSettings)
+    next[name] = value
+    pendingSettings = next
+    pendingExpiry.restart()
+    if (later) settingWriter.restart()
+    else writeSetting(name)
+  }
+
+  function writeSetting(name) {
+    Util.execArgv(["omarchy", "bar", "set", root.moduleName, name,
+                   JSON.stringify(pendingSettings[name]), "--json"])
+  }
+
+  onSettingsChanged: {
+    var next = {}
+    var dropped = false
+    for (var name in pendingSettings) {
+      if (JSON.stringify(setting(name, null)) === JSON.stringify(pendingSettings[name])) dropped = true
+      else next[name] = pendingSettings[name]
+    }
+    if (dropped) pendingSettings = next
+  }
+
+  function deviceSetting(device, key) {
+    var own = deviceSettings[String(device.id)]
+    return Util.isPlainObject(own) ? own[key] : undefined
+  }
+
+  // Always from the merged copy (pending included), so two quick changes to
+  // different devices both survive. undefined removes the key.
+  function saveDeviceSetting(device, key, value) {
+    var all = JSON.parse(JSON.stringify(deviceSettings))
+    var id = String(device.id)
+    var own = Util.isPlainObject(all[id]) ? all[id] : {}
+    if (value === undefined) delete own[key]
+    else own[key] = value
+    if (Object.keys(own).length > 0) all[id] = own
+    else delete all[id]
+    saveSetting("devices", all)
+  }
+
+  function isHidden(device) { return deviceSetting(device, "hidden") === true }
+
+  function setHidden(device, hidden) { saveDeviceSetting(device, "hidden", hidden ? true : undefined) }
+
+  function stepSetting(name, value, step, min, max) {
+    saveSetting(name, Math.max(min, Math.min(max, value + step)), true)
   }
 
   // Receiver slot, or one direct hidraw node. Two links to one unit share an
@@ -292,6 +396,11 @@ BarWidget {
     // Asked mid-read (e.g. right after a backlight switch): that read may
     // predate the change, so run another one as soon as it ends.
     if (statusProc.running) { refreshQueued = true; return }
+    // A device's feature table is read once, then kept with the device.
+    var known = []
+    for (var i = 0; i < devices.length; i++)
+      if (devices[i].features && known.indexOf(String(devices[i].id)) < 0) known.push(String(devices[i].id))
+    statusProc.command = ["/usr/bin/python3", root.helperPath, "--known=" + known.join(",")]
     statusProc.running = true
   }
 
@@ -326,7 +435,11 @@ BarWidget {
     // A list, not an id map: the same id can be online on one link and asleep
     // on another, and each has to keep its own name and last reading.
     var previous = []
-    for (var i = 0; i < devices.length; i++) previous.push(devices[i])
+    var knownIds = {}
+    for (var i = 0; i < devices.length; i++) {
+      previous.push(devices[i])
+      knownIds[String(devices[i].id)] = true
+    }
 
     var now = Date.now()
     var merged = []
@@ -378,6 +491,7 @@ BarWidget {
       if (old) {
         if (!d.battery && old.battery) { d.battery = old.battery; d.stale = true }
         if (!d.backlight && old.backlight) d.backlight = old.backlight
+        if (!d.features && old.features) d.features = old.features
       }
       merged.push(d)
     }
@@ -448,30 +562,86 @@ BarWidget {
     }
     lastError = ""
     lastUpdated = now
+    // Only a device paired while the shell runs is new: at login (or with no
+    // saved state) every device would otherwise be announced at once.
+    var paired = []
+    if (loaded) {
+      for (var a = 0; a < shown.length; a++)
+        if (shown[a].online && !knownIds[String(shown[a].id)]) paired.push(String(shown[a].id))
+    }
     loaded = true
     checkLowBattery()
+    checkConnections(paired)
     saveState()
     applyDarkHours()
   }
 
-  // Warn once per discharge. Only fresh readings count: a stale reading from
-  // a sleeping device neither warns nor clears the warning.
+  // Warn once per discharge, and once more at criticalLevel. Only fresh
+  // readings count: a stale reading from a sleeping device neither warns nor
+  // clears the warning.
   function checkLowBattery() {
     var next = Object.assign({}, lowNotified)
-    for (var i = 0; i < devices.length; i++) {
-      var d = devices[i]
+    for (var i = 0; i < shown.length; i++) {
+      var d = shown[i]
       var b = d.battery
       if (!b || !isLive(d)) continue
-      if (b.level <= lowThreshold && !b.charging && !b.full) {
+      var draining = !b.charging && !b.full
+      if (draining && b.level <= criticalLevel) {
+        if (next[d.id] !== "critical") {
+          // Straight past the low mark (asleep in between): one notice, not two.
+          if (notifyCritical) notifyBattery(d, true)
+          else if (!next[d.id] && notifyLowBattery) notifyBattery(d, false)
+          next[d.id] = "critical"
+        }
+      } else if (draining && b.level <= lowThreshold) {
         if (!next[d.id]) {
-          next[d.id] = true
-          notifyLow(d)
+          if (notifyLowBattery) notifyBattery(d, false)
+          next[d.id] = "low"
         }
       } else {
         delete next[d.id]
       }
     }
     lowNotified = next
+  }
+
+  // By unit id, so the MX Master 4 asleep on the receiver while it is live
+  // over Bluetooth counts as connected. `paired`: ids new since the last read.
+  function checkConnections(paired) {
+    var now = Date.now()
+    var live = {}
+    var names = {}
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (isHidden(d)) continue
+      var id = String(d.id)
+      if (!names[id] || d.online) names[id] = d
+      if (d.online) live[id] = true
+    }
+    var since = Object.assign({}, offlineSince)
+    var gone = Object.assign({}, announcedGone)
+    var seen = Object.assign({}, wasLive)
+    for (var key in names) {
+      if (live[key]) {
+        if (notifyConnection && (gone[key] || (paired && paired.indexOf(key) >= 0)))
+          notifyLink(names[key], true)
+        delete gone[key]
+        delete since[key]
+        seen[key] = true
+      } else if (seen[key]) {
+        if (!since[key]) since[key] = now
+        else if (!gone[key] && notifyConnection && now - since[key] >= goneAfterMs) {
+          gone[key] = true
+          notifyLink(names[key], false)
+        }
+      }
+    }
+    offlineSince = since
+    wasLive = seen
+    if (JSON.stringify(gone) !== JSON.stringify(announcedGone)) {
+      announcedGone = gone
+      saveState()
+    }
   }
 
   // Freedesktop icon-theme names for notify-send, not the Nerd Font glyphs
@@ -483,13 +653,19 @@ BarWidget {
     return "input-mouse"
   }
 
-  function notifyLow(device) {
-    var icon = notifyIcon(device.kind)
-    // A real app name keeps it in notification history; plain notify-send
-    // would count as throwaway.
-    Util.execArgv(["notify-send", "-a", "Solaarchy", "-i", icon,
-      device.name + " battery low",
-      device.battery.level + "% left. Charge it soon."])
+  // A real app name keeps these in notification history; plain notify-send
+  // would count as throwaway.
+  function notifyBattery(device, critical) {
+    Util.execArgv(["notify-send", "-a", "Solaarchy", "-i", notifyIcon(device.kind),
+      "-u", critical ? "critical" : "normal",
+      device.name + (critical ? " battery critical" : " battery low"),
+      device.battery.level + "% left. Charge it " + (critical ? "now." : "soon.")])
+  }
+
+  function notifyLink(device, connected) {
+    Util.execArgv(["notify-send", "-a", "Solaarchy", "-i", notifyIcon(device.kind),
+      device.name + (connected ? " connected" : " disconnected"),
+      connected ? "Back online." : "No link for 5 minutes: switched off, out of range or asleep."])
   }
 
   function saveState() {
@@ -498,6 +674,7 @@ BarWidget {
       receivers: receivers,
       devices: devices,
       lowNotified: lowNotified,
+      announcedGone: announcedGone,
       darkApplied: darkApplied
     }) + "\n"
     if (text === savedText) return
@@ -513,7 +690,20 @@ BarWidget {
     savedText = raw
     if (Util.isPlainObject(doc.lowNotified))
       lowNotified = Object.assign({}, doc.lowNotified, lowNotified)
-    if (typeof doc.darkApplied === "boolean" && darkApplied === null) darkApplied = doc.darkApplied
+    if (Util.isPlainObject(doc.announcedGone))
+      announcedGone = Object.assign({}, doc.announcedGone, announcedGone)
+    if (Util.isPlainObject(doc.darkApplied)) {
+      darkApplied = Object.assign({}, doc.darkApplied, darkApplied)
+    } else if (typeof doc.darkApplied === "boolean" && Array.isArray(doc.devices)) {
+      // The first dark hours build kept one state for its one keyboard.
+      var applied = Object.assign({}, darkApplied)
+      for (var k = 0; k < doc.devices.length; k++) {
+        var kb = doc.devices[k]
+        if (Util.isPlainObject(kb) && kb.backlight && applied[String(kb.id)] === undefined)
+          applied[String(kb.id)] = doc.darkApplied
+      }
+      darkApplied = applied
+    }
     if (loaded || !Array.isArray(doc.devices)) return
     if (Array.isArray(doc.receivers)) receivers = doc.receivers.map(String)
     var restored = []
@@ -548,6 +738,7 @@ BarWidget {
     devices = next
     // A read already under way may have pinged before the link dropped.
     if (statusProc.running) refreshQueued = true
+    checkConnections(null)
     saveState()
     return true
   }
@@ -596,10 +787,57 @@ BarWidget {
     backlightProc.running = true
   }
 
+  // Dark hours for one keyboard: its own choice from its drawer, else the
+  // switch on the Settings page.
+  function darkHoursFor(device) {
+    var own = deviceSetting(device, "darkHours")
+    return typeof own === "boolean" ? own : darkHours
+  }
+
+  function hasOwnDarkHours(device) { return typeof deviceSetting(device, "darkHours") === "boolean" }
+
+  // The backlit keyboards dark hours switches, one row per unit.
+  readonly property var darkKeyboards: {
+    var seen = {}
+    var out = []
+    for (var i = 0; i < shown.length; i++) {
+      var d = shown[i]
+      if (!d.backlight || !darkHoursFor(d) || seen[String(d.id)]) continue
+      seen[String(d.id)] = true
+      out.push(d)
+    }
+    return out
+  }
+  readonly property var backlitKeyboards: shown.filter(function(d) { return !!d.backlight })
+  readonly property bool twilightActive: darkHours || darkKeyboards.length > 0 || twilightPreview
+
+  // Switching dark hours on applies the current state at once, not at the
+  // next dusk or dawn: forget what was last applied to the keyboards it
+  // turns on for.
+  function forgetApplied(list) {
+    var next = Object.assign({}, darkApplied)
+    for (var i = 0; i < list.length; i++) delete next[String(list[i].id)]
+    darkApplied = next
+  }
+
+  function setDarkHours(on) {
+    if (on && !darkHours)
+      forgetApplied(backlitKeyboards.filter(function(d) { return !hasOwnDarkHours(d) }))
+    saveSetting("darkHours", on)
+  }
+
+  // own: true/false sets this keyboard's choice, undefined follows the
+  // Settings switch again.
+  function setDeviceDarkHours(device, own) {
+    var after = typeof own === "boolean" ? own : darkHours
+    if (after && !darkHoursFor(device)) forgetApplied([device])
+    saveDeviceSetting(device, "darkHours", own)
+  }
+
   // The command is built here, not bound: a settings change handler runs
   // before the binding would have caught up, and the helper got the old value.
   function runTwilight() {
-    if (!darkHours) return
+    if (!twilightActive) return
     if (twilightProc.running) { twilightQueued = true; return }
     twilightProc.command = ["/usr/bin/python3", twilightPath, String(darkHoursOffset), darkHoursLocation]
     twilightProc.running = true
@@ -612,46 +850,188 @@ BarWidget {
     // also catches a dusk or dawn that passed while the computer slept.
     var wait = doc.until ? doc.until * 1000 - Date.now() + 2000 : 600000
     twilightTimer.interval = Math.max(5000, Math.min(600000, wait))
-    twilightTimer.restart()
+    if (twilightActive) twilightTimer.restart()
     twilightError = doc.error ? String(doc.error) : ""
     twilight = doc.error ? null : doc
-    if (twilight && twilight.dark !== darkApplied) {
-      darkTarget = twilight.dark
-      applyDarkHours()
-    }
+    darkFailed = ({})
+    applyDarkHours()
   }
 
-  // ponytail: only the keyboard right-click toggles (the first backlit one);
-  // a second backlit keyboard keeps its own state.
+  // One keyboard at a time: the refresh after each switch comes back here
+  // for the next one.
   function applyDarkHours() {
-    if (!darkHours || darkTarget === null || backlightProc.running) return
-    var device = keyboard
-    if (!device || !isLive(device)) return  // retried after the next read
-    if (backlightOn(device) === darkTarget) {
-      darkApplied = darkTarget
-      darkTarget = null
-      saveState()
-      return
+    if (!twilight || backlightProc.running) return
+    var dark = twilight.dark
+    var settled = false
+    for (var i = 0; i < shown.length; i++) {
+      var d = shown[i]
+      var id = String(d.id)
+      if (!d.backlight || !darkHoursFor(d) || darkApplied[id] === dark || darkFailed[id]) continue
+      if (!isLive(d)) continue  // retried after the next read
+      if (backlightOn(d) === dark) {
+        darkApplied[id] = dark
+        settled = true
+        continue
+      }
+      darkSwitching = { "id": id, "dark": dark }
+      setBacklight(d, dark ? 1 : 0)
+      break
     }
-    darkSwitching = darkTarget
-    setBacklight(device, darkTarget ? 1 : 0)
+    if (settled) saveState()
   }
 
-  onDarkHoursChanged: {
-    if (!darkHours) {
-      twilight = null
-      twilightError = ""
-      darkTarget = null
-      twilightTimer.stop()
-    }
-    runTwilight()
+  // Counting starts when the notices are switched on: a device asleep for
+  // hours is not announced right away.
+  onNotifyConnectionChanged: {
+    offlineSince = ({})
+    wasLive = ({})
+  }
+
+  onTwilightActiveChanged: {
+    if (twilightActive) runTwilight()
+    else twilightTimer.stop()
   }
   onDarkHoursOffsetChanged: runTwilight()
   onDarkHoursLocationChanged: runTwilight()
+  // Switched on, in the panel or from the command line: applies at once.
+  onDarkHoursChanged: applyDarkHours()
+  onDeviceSettingsChanged: applyDarkHours()
 
-  readonly property string darkHoursText: !darkHours || !twilight ? ""
-    : twilight.dusk && twilight.dawn ? "Dark hours: on at " + twilight.dusk + ", off at " + twilight.dawn
-    : "Dark hours: " + (twilight.dark ? "dark" : "light") + " all day"
+  readonly property string darkTimesText: !twilight ? ""
+    : twilight.dusk && twilight.dawn ? "on at " + twilight.dusk + ", off at " + twilight.dawn
+    : twilight.dark ? "dark all day" : "light all day"
+
+  function darkHoursText(device) {
+    return darkHoursFor(device) && darkTimesText !== "" ? "Dark hours: " + darkTimesText : ""
+  }
+
+  // Minutes since midnight, and a Unix time, as local "HH:MM".
+  function clockText(minute) {
+    var h = Math.floor(minute / 60) % 24
+    var m = Math.round(minute % 60)
+    return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m
+  }
+
+  function timeText(seconds) {
+    var d = new Date(seconds * 1000)
+    return clockText(d.getHours() * 60 + d.getMinutes())
+  }
+
+  // ---- Capabilities and add-ons ----
+
+  // A device's HID++ feature names (Solaar's), from whichever of its links
+  // was read: the mouse may have been read over the receiver and be live
+  // over Bluetooth now. null until one link has been read.
+  function featuresOf(device) {
+    for (var i = 0; i < devices.length; i++)
+      if (String(devices[i].id) === String(device.id) && devices[i].features) return devices[i].features
+    return null
+  }
+
+  // What the drawer groups a device's features into. A category gets its own
+  // section when something fills it (built in, an add-on, or a known add-on
+  // to come); the rest are named on one line, as room for add-ons.
+  readonly property var categories: [
+    { "id": "lighting", "label": "Lighting", "features": ["BACKLIGHT", "BACKLIGHT2", "BACKLIGHT3",
+      "COLOR_LED_EFFECTS", "RGB_EFFECTS", "LED_CONTROL", "PER_KEY_LIGHTING", "PER_KEY_LIGHTING_V2",
+      "BRIGHTNESS_CONTROL"] },
+    { "id": "haptics", "label": "Haptics", "features": ["HAPTIC", "FORCE_SENSING_BUTTON"] },
+    { "id": "buttons", "label": "Buttons", "features": ["REPROG_CONTROLS_V4", "PERSISTENT_REMAPPABLE_ACTION",
+      "GESTURE_2", "ONBOARD_PROFILES", "GKEY", "MKEYS", "MR"] },
+    { "id": "pointer", "label": "Pointer & scroll", "features": ["ADJUSTABLE_DPI", "EXTENDED_ADJUSTABLE_DPI",
+      "SMART_SHIFT", "SMART_SHIFT_ENHANCED", "HIRES_WHEEL", "LOWRES_WHEEL", "THUMB_WHEEL",
+      "VERTICAL_SCROLLING", "POINTER_SPEED", "REPORT_RATE", "EXTENDED_ADJUSTABLE_REPORT_RATE"] },
+    { "id": "keyboard", "label": "Keyboard", "features": ["FN_INVERSION", "NEW_FN_INVERSION",
+      "K375S_FN_INVERSION", "KEYBOARD_DISABLE_KEYS", "KEYBOARD_DISABLE_BY_USAGE", "MULTIPLATFORM",
+      "DUALPLATFORM", "LOCK_KEY_STATE", "KEYBOARD_LAYOUT", "KEYBOARD_LAYOUT_2"] },
+    { "id": "easyswitch", "label": "Easy-\u2060Switch", "features": ["CHANGE_HOST", "HOSTS_INFO"] }
+  ]
+
+  function categoryLabel(id) {
+    for (var i = 0; i < categories.length; i++)
+      if (categories[i].id === id) return categories[i].label
+    return id
+  }
+
+  // Add-ons Solaarchy knows of before they exist, shown greyed where they fit.
+  readonly property var knownAddons: [
+    { "category": "haptics", "label": "Haptics add-on",
+      "note": "Haptic feedback for this mouse, as its own plugin. In development; nothing to install yet." }
+  ]
+
+  // solaarchy-addons.py's last answer; re-read each time the panel opens.
+  property var addons: []
+  property var addonErrors: []
+
+  function applyAddons(raw) {
+    try {
+      var doc = JSON.parse(String(raw).trim())
+      addons = Array.isArray(doc.addons) ? doc.addons : []
+      addonErrors = Array.isArray(doc.errors) ? doc.errors.map(String) : []
+    } catch (e) {
+      addonErrors = ["could not list add-ons"]
+    }
+  }
+
+  // Add-ons that fit a device: their category, and (when they name any) at
+  // least one of their features on it.
+  function addonFits(addon, device, category) {
+    if (addon.category !== category) return false
+    if (!addon.features || addon.features.length === 0) return true
+    var have = featuresOf(device) || []
+    for (var i = 0; i < addon.features.length; i++)
+      if (have.indexOf(addon.features[i]) >= 0) return true
+    return false
+  }
+
+  // The drawer's sections for one device, in category order:
+  // {id, label, builtin, addons, off, known}. Plus "also": the labels of
+  // categories the device has but nothing fills yet.
+  function drawerSections(device) {
+    var have = featuresOf(device) || []
+    var sections = []
+    var also = []
+    for (var c = 0; c < categories.length; c++) {
+      var cat = categories[c]
+      var present = cat.features.some(function(f) { return have.indexOf(f) >= 0 })
+      var builtin = cat.id === "lighting" && !!device.backlight
+      if (!present && !builtin) continue
+      var fit = addons.filter(function(a) { return addonFits(a, device, cat.id) })
+      var on = fit.filter(function(a) { return a.enabled })
+      var off = fit.filter(function(a) { return !a.enabled })
+      var known = fit.length > 0 ? [] : knownAddons.filter(function(k) { return k.category === cat.id })
+      if (builtin || fit.length > 0 || known.length > 0)
+        sections.push({ "id": cat.id, "label": cat.label, "builtin": builtin, "addons": on, "off": off, "known": known })
+      else
+        also.push(cat.label)
+    }
+    return { "sections": sections, "also": also }
+  }
+
+  // What an add-on's drawer and panel are told about a device.
+  function addonDevice(device) {
+    return {
+      "id": String(device.id),
+      "name": device.name,
+      "kind": device.kind,
+      "online": !!device.online,
+      // What `solaar config` and `solaar show` accept for it.
+      "selector": solaarDeviceArg(device),
+      "features": featuresOf(device) || []
+    }
+  }
+
+  // ponytail: the public IPC route. The shell API's in-process summon only
+  // reaches Solaarchy's own id; if Omarchy closes this, add-ons lose only
+  // the button, not their drawer.
+  function openAddonPanel(addon, device, extra) {
+    var payload = Object.assign({}, extra || {}, { "device": addonDevice(device) })
+    Util.execArgv(["omarchy-shell", "shell", "summon", addon.id, JSON.stringify(payload)])
+  }
+
+  function scanAddons() {
+    if (!addonsProc.running) addonsProc.running = true
+  }
 
   function openSolaar() {
     // A running Solaar is a GApplication: a second launch just raises its window.
@@ -753,6 +1133,7 @@ BarWidget {
   onOpenedChanged: {
     if (!opened) return
     actionError = ""
+    scanAddons()
     // Reading wakes the receiver and takes seconds; don't redo a fresh one.
     if (Date.now() - lastUpdated > 30000) refresh()
   }
@@ -768,7 +1149,6 @@ BarWidget {
 
   Process {
     id: statusProc
-    command: ["/usr/bin/python3", root.helperPath]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.applyStatus(text)
@@ -835,12 +1215,13 @@ BarWidget {
         root.pendingBacklight = ({})
         root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not switch the backlight"
       }
-      if (root.darkSwitching !== null) {
+      var dark = root.darkSwitching
+      if (dark !== null) {
+        root.darkSwitching = null
         // A failed switch is retried with the next twilight check, not the
         // next read, which would loop on a keyboard that keeps refusing.
-        if (exitCode === 0) root.darkApplied = root.darkSwitching
-        root.darkTarget = null
-        root.darkSwitching = null
+        if (exitCode === 0) root.darkApplied[dark.id] = dark.dark
+        else root.darkFailed[dark.id] = true
         root.saveState()
       }
       root.refresh()
@@ -863,6 +1244,31 @@ BarWidget {
   Timer {
     id: twilightTimer
     onTriggered: root.runTwilight()
+  }
+
+  Process {
+    id: addonsProc
+    command: ["/usr/bin/python3", root.addonsPath]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyAddons(text)
+    }
+  }
+
+  // Steppers write once the clicks stop; a write that never comes back
+  // (shell busy, `omarchy` missing) stops showing after a few seconds.
+  Timer {
+    id: settingWriter
+    interval: 600
+    onTriggered: {
+      for (var name in root.pendingSettings) root.writeSetting(name)
+    }
+  }
+
+  Timer {
+    id: pendingExpiry
+    interval: 5000
+    onTriggered: root.pendingSettings = ({})
   }
 
   // `solaar config` has no timeout of its own; if the device is unreachable
@@ -897,6 +1303,7 @@ BarWidget {
       // Timers stop counting while the computer sleeps; a wall-clock check
       // here switches within 30 s of waking past a dusk or dawn.
       if (root.twilight && root.twilight.until && Date.now() >= root.twilight.until * 1000) root.runTwilight()
+      if (root.notifyConnection) root.checkConnections(null)
     }
   }
 

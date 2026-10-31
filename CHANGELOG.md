@@ -2,10 +2,29 @@
 
 ## Unreleased
 
-- Dark hours: the keyboard backlight can switch on at civil dusk and off at
-  civil dawn, so it lights up when you sit down before sunrise even after you
-  turned it off during the day. Optional offset in minutes, and your own
-  coordinates instead of your timezone's city. Off by default.
+- **Dark hours:** every backlit keyboard can switch on at civil dusk and off
+  at civil dawn, so it lights up when you sit down before sunrise even after
+  you turned it off during the day. It has its own page with today as a
+  24-hour strip, an offset in minutes, and your own coordinates instead of
+  your timezone's city. Off by default.
+- **A drawer per device**, behind a chevron at the end of its row:
+  - dark hours for that keyboard alone
+  - Hide this device
+  - the device's capabilities, read once from its HID++ feature list and
+    grouped as Lighting, Haptics, Buttons, Pointer & scroll, Keyboard and
+    Easy-Switch
+- **Settings in the panel**, behind the gear: dark hours, notifications, the
+  bar, hidden devices and add-ons. The big icon now opens the bar icon
+  picker; the palette button is gone.
+- **Notifications:**
+  - the low battery one can be switched off
+  - a second, urgent warning at 5 %
+  - optional connected and disconnected notices, after 5 minutes without a
+    link, since asleep and switched off look the same
+- **Add-ons:** an Omarchy plugin with a `solaarchy-addon.json` can put its
+  own controls into a device's drawer, or open its own panel for that device.
+  See ADDONS.md. Haptics for the MX Master 4 shows greyed as the first add-on
+  in development.
 
 ## 1.0.4
 

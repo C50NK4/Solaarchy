@@ -22,8 +22,13 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   property int cursorIndex: -1
-  // "main": the devices; "icons": the bar icon picker sub-panel.
+  // "main": the devices; "icons": the bar icon picker; "settings": the gear
+  // page; "darkhours": the dark hours page, which goes back to wherever it
+  // was opened from (Settings or a keyboard's drawer).
   property string page: "main"
+  property string backPage: "main"
+  // The device whose drawer is open, by id; "" for none.
+  property string drawerId: ""
 
   // Keyboard-cursor targets for the current page, in reading order.
   readonly property var actions: {
@@ -42,10 +47,32 @@ Panel {
       picker.push("icon-add")
       return picker
     }
-    var list = ["icons", "refresh", "solaar"]
+    if (page === "settings") {
+      var settings = ["back", "dark-toggle", "dark-page", "notify-low", "low-minus", "low-plus",
+                      "notify-critical", "notify-connection", "hide-bar"]
+      if (w) for (var h = 0; h < w.hiddenDevices.length; h++) settings.push("unhide:" + w.hiddenDevices[h].id)
+      return settings
+    }
+    if (page === "darkhours")
+      return ["back", "dark-toggle", "offset-minus", "offset-plus", "loc-zone", "loc-custom"]
+    var list = ["icons", "settings", "refresh", "solaar"]
     if (w) {
-      for (var j = 0; j < w.shown.length; j++)
-        if (w.shown[j].backlight) list.push("backlight:" + w.shown[j].id)
+      for (var j = 0; j < w.shown.length; j++) {
+        var d = w.shown[j]
+        if (d.backlight) list.push("backlight:" + d.id)
+        list.push("drawer:" + d.id)
+        if (String(d.id) !== drawerId) continue
+        var sections = w.drawerSections(d).sections
+        for (var s = 0; s < sections.length; s++) {
+          if (sections[s].builtin) {
+            if (w.hasOwnDarkHours(d)) list.push("dark-reset:" + d.id)
+            list.push("dark-own:" + d.id, "dark-page")
+          }
+          for (var a = 0; a < sections[s].addons.length; a++)
+            if (sections[s].addons[a].panel) list.push("addon:" + sections[s].addons[a].id + ":" + d.id)
+        }
+        list.push("hide:" + d.id)
+      }
     }
     return list
   }
@@ -60,9 +87,22 @@ Panel {
   }
 
   function showPage(name) {
+    if (name === "darkhours" && page !== "darkhours") backPage = page
     page = name
     cursorIndex = -1
+    // Leaving the dark hours page from its location field must not leave
+    // the keys with a hidden field.
+    restoreFocus()
   }
+
+  function goBack() { showPage(page === "darkhours" ? backPage : "main") }
+
+  function toggleDrawer(id) {
+    drawerId = drawerId === String(id) ? "" : String(id)
+  }
+
+  // After typing in a text field: arrows and Enter drive the cursor again.
+  function restoreFocus() { keyCatcher.forceActiveFocus() }
 
   function hasCursorOn(action) {
     return cursorIndex >= 0 && actions[cursorIndex] === action
@@ -72,34 +112,80 @@ Panel {
     if (isHovered) cursorIndex = actions.indexOf(action)
   }
 
-  function runAction(name) {
-    if (name === "icons") showPage("icons")
-    else if (name === "back") showPage("main")
-    else if (name === "refresh") w.refresh()
-    else if (name === "solaar") w.openSolaar()
-    else if (name === "icon-add") w.pickCustomIcon()
-    else if (name.indexOf("icon:") === 0) w.chooseIcon(name.slice(5))
-    else if (name.indexOf("backlight:") === 0) {
-      // Two links to one keyboard share an id. The bulb click passes its own
-      // row; this lookup must not stop on the asleep receiver slot.
-      var wanted = name.slice(10)
-      var chosen = null
-      for (var i = 0; i < w.shown.length; i++) {
-        if (String(w.shown[i].id) !== wanted || !w.shown[i].backlight) continue
-        if (!chosen || w.shown[i].online) chosen = w.shown[i]
-      }
-      if (chosen) w.toggleBacklight(chosen)
+  // Two links to one unit share an id; prefer the online one, so a lookup
+  // never stops on the asleep receiver slot.
+  function deviceById(id) {
+    var chosen = null
+    for (var i = 0; i < w.shown.length; i++) {
+      if (String(w.shown[i].id) !== id) continue
+      if (!chosen || w.shown[i].online) chosen = w.shown[i]
     }
+    return chosen
   }
 
+  function runAction(name) {
+    var colon = name.indexOf(":")
+    var arg = colon >= 0 ? name.slice(colon + 1) : ""
+    var verb = colon >= 0 ? name.slice(0, colon) : name
+    var device = arg !== "" && verb !== "icon" && verb !== "addon" ? deviceById(arg) : null
+    if (verb === "icons") showPage("icons")
+    else if (verb === "settings") showPage("settings")
+    else if (verb === "back") goBack()
+    else if (verb === "refresh") w.refresh()
+    else if (verb === "solaar") w.openSolaar()
+    else if (verb === "icon-add") w.pickCustomIcon()
+    else if (verb === "icon") w.chooseIcon(arg)
+    else if (verb === "backlight") { if (device && device.backlight) w.toggleBacklight(device) }
+    else if (verb === "drawer") toggleDrawer(arg)
+    else if (verb === "dark-own") { if (device) w.setDeviceDarkHours(device, !w.darkHoursFor(device)) }
+    else if (verb === "dark-reset") { if (device) w.setDeviceDarkHours(device, undefined) }
+    else if (verb === "hide") {
+      if (device) { drawerId = ""; w.setHidden(device, true) }
+    }
+    else if (verb === "unhide") {
+      for (var i = 0; i < w.hiddenDevices.length; i++)
+        if (String(w.hiddenDevices[i].id) === arg) w.setHidden(w.hiddenDevices[i], false)
+    }
+    else if (verb === "addon") {
+      // "addon:<add-on id>:<device id>"; add-on ids have no colon.
+      var cut = arg.indexOf(":")
+      var target = deviceById(arg.slice(cut + 1))
+      for (var k = 0; k < w.addons.length; k++)
+        if (w.addons[k].id === arg.slice(0, cut) && target) w.openAddonPanel(w.addons[k], target)
+    }
+    else if (verb === "dark-page") showPage("darkhours")
+    else if (verb === "dark-toggle") w.setDarkHours(!w.darkHours)
+    else if (verb === "notify-low") w.saveSetting("notifyLowBattery", !w.notifyLowBattery)
+    else if (verb === "notify-critical") w.saveSetting("notifyCritical", !w.notifyCritical)
+    else if (verb === "notify-connection") w.saveSetting("notifyConnection", !w.notifyConnection)
+    else if (verb === "hide-bar") w.saveSetting("hideWhenDisconnected", !w.hideWhenDisconnected)
+    else if (verb === "low-minus") w.stepSetting("lowThreshold", w.lowThreshold, -5, 5, 50)
+    else if (verb === "low-plus") w.stepSetting("lowThreshold", w.lowThreshold, 5, 5, 50)
+    else if (verb === "offset-minus") w.stepSetting("darkHoursOffset", w.darkHoursOffset, -5, -120, 120)
+    else if (verb === "offset-plus") w.stepSetting("darkHoursOffset", w.darkHoursOffset, 5, -120, 120)
+    else if (verb === "loc-zone" || verb === "loc-custom") locationModeRequested(verb === "loc-custom")
+    // An action that adds or drops others (a drawer, the reset button next
+    // to a switch) keeps the cursor on the control it was on.
+    if (cursorIndex >= 0 && actions.indexOf(name) >= 0) cursorIndex = actions.indexOf(name)
+  }
+
+  // The dark hours page owns the location field; it listens for this.
+  signal locationModeRequested(bool custom)
+
+  onPageChanged: if (w) w.twilightPreview = opened && (page === "settings" || page === "darkhours")
+
   onOpenedChanged: {
+    if (w) w.twilightPreview = opened && (page === "settings" || page === "darkhours")
     // Always start keyboard nav fresh on open. But only snap back to the
     // devices page on a real close: a Tab hand-off to another bar widget's
     // panel closes this one via closeForPopoutSwitch() first (which sets
     // popoutSwitchClosing before this fires), and Tabbing back should find
-    // the icon picker exactly as it was left, not reset to "main".
+    // the panel exactly as it was left, not reset to "main".
     if (opened) { cursorIndex = -1; return }
-    if (!popoutSwitchClosing) page = "main"
+    if (!popoutSwitchClosing) {
+      page = "main"
+      drawerId = ""
+    }
   }
 
   KeyboardPanel {
@@ -124,8 +210,8 @@ Panel {
       onActivateRequested: {
         if (root.cursorIndex >= 0) root.runAction(root.actions[root.cursorIndex])
       }
-      // Escape on the icon sub-panel steps back to the devices first.
-      onCloseRequested: root.page === "icons" ? root.showPage("main") : root.close()
+      // Escape on a sub-page steps back first.
+      onCloseRequested: root.page !== "main" ? root.goBack() : root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       // Built once the bar widget has injected itself, with both references

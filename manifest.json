@@ -5,7 +5,7 @@
   "version": "1.0.4",
   "author": "C50NK4",
   "license": "MIT",
-  "description": "Every connected Logitech device at a glance in the Omarchy bar: battery per device, live connect and disconnect, low-battery alerts and the keyboard backlight, read through Solaar.",
+  "description": "Every connected Logitech device at a glance in the Omarchy bar: battery per device, live connect and disconnect, low-battery alerts, the keyboard backlight and dark hours, read through Solaar. Add-ons can extend each device's drawer.",
   "homepage": "https://github.com/C50NK4/Solaarchy",
   "repository": "https://github.com/C50NK4/Solaarchy",
   "kinds": [
@@ -27,9 +27,13 @@
       "refreshIntervalSec": 300,
       "lowThreshold": 15,
       "hideWhenDisconnected": true,
+      "notifyLowBattery": true,
+      "notifyCritical": true,
+      "notifyConnection": false,
       "darkHours": false,
       "darkHoursOffset": 0,
-      "darkHoursLocation": ""
+      "darkHoursLocation": "",
+      "devices": {}
     },
     "schema": [
       {
@@ -83,6 +87,27 @@
         "defaultValue": 15
       },
       {
+        "key": "notifyLowBattery",
+        "type": "boolean",
+        "label": "Low battery notification",
+        "description": "Notify once per discharge when a device drops below the low battery threshold.",
+        "defaultValue": true
+      },
+      {
+        "key": "notifyCritical",
+        "type": "boolean",
+        "label": "Critical battery notification",
+        "description": "One more, urgent notification when a device drops to 5%.",
+        "defaultValue": true
+      },
+      {
+        "key": "notifyConnection",
+        "type": "boolean",
+        "label": "Connected and disconnected notifications",
+        "description": "Notify when a device has had no link for 5 minutes, and when it comes back. Asleep and switched off look the same, hence the wait.",
+        "defaultValue": false
+      },
+      {
         "key": "hideWhenDisconnected",
         "type": "boolean",
         "label": "Hide when no receiver",
@@ -93,7 +118,7 @@
         "key": "darkHours",
         "type": "boolean",
         "label": "Dark hours",
-        "description": "Turn the keyboard backlight on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn.",
+        "description": "Turn every backlit keyboard's light on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn. A keyboard's drawer in the panel can set it apart.",
         "defaultValue": false
       },
       {

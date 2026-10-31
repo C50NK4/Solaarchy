@@ -3,8 +3,9 @@ import qs.Commons
 import qs.Ui
 import "icons.js" as Icons
 
-// Solaarchy panel body. Two pages that swap in place: the devices, and the bar
-// icon picker opened from the palette button next to Refresh.
+// Solaarchy panel body. Pages that swap in place: the devices (each with a
+// drawer for its own settings), the bar icon picker opened from the big icon,
+// Settings behind the gear, and the dark hours page.
 Item {
   id: content
 
@@ -13,7 +14,10 @@ Item {
   property var w
   property var view
 
-  implicitHeight: content.view.page === "icons" ? iconsPage.implicitHeight : mainPage.implicitHeight
+  implicitHeight: content.view.page === "icons" ? iconsPage.implicitHeight
+    : content.view.page === "settings" ? settingsPage.implicitHeight
+    : content.view.page === "darkhours" ? darkHoursPage.implicitHeight
+    : mainPage.implicitHeight
 
   // ================= Devices =================
   Column {
@@ -28,13 +32,46 @@ Item {
       fontFamily: content.view.fontFamily
       title: "Solaarchy"
       meta: content.w.metaText
+      // The icon itself opens the bar icon picker.
       iconComponent: Component {
-        IconMark {
-          iconId: content.w.currentIcon.id
-          iconData: content.w.currentIcon.custom ? content.w.currentIcon : null
-          height: Icons.fitHeight(content.w.currentIcon, Style.font.display)
-          color: content.w.anyLow ? content.view.urgent : content.view.fg
-          Behavior on color { ColorAnimation { duration: 200 } }
+        Item {
+          implicitWidth: heroMark.implicitWidth
+          implicitHeight: heroMark.height
+
+          BorderSurface {
+            anchors.fill: parent
+            anchors.margins: -Style.space(4)
+            radius: Style.cornerRadius
+            color: heroMouse.containsMouse || content.view.hasCursorOn("icons")
+              ? Style.hoverFillFor(content.view.fg, content.view.fg) : "transparent"
+            borderSpec: Border.none()
+            Behavior on color { ColorAnimation { duration: 60 } }
+          }
+
+          IconMark {
+            id: heroMark
+            iconId: content.w.currentIcon.id
+            iconData: content.w.currentIcon.custom ? content.w.currentIcon : null
+            height: Icons.fitHeight(content.w.currentIcon, Style.font.display)
+            color: content.w.anyLow ? content.view.urgent : content.view.fg
+            Behavior on color { ColorAnimation { duration: 200 } }
+          }
+
+          MouseArea {
+            id: heroMouse
+            anchors.fill: parent
+            anchors.margins: -Style.space(4)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onContainsMouseChanged: content.view.hoverAction("icons", containsMouse)
+            onClicked: content.view.runAction("icons")
+          }
+
+          PanelToolTip {
+            visible: heroMouse.containsMouse
+            text: "Bar icon: click to change"
+            fontFamily: content.view.fontFamily
+          }
         }
       }
       trailingControl: Component {
@@ -42,13 +79,13 @@ Item {
           spacing: Style.space(4)
 
           PanelActionButton {
-            iconText: "󰏘"
-            tooltipText: "Bar icon"
+            iconText: "󰒓"
+            tooltipText: "Settings"
             foreground: content.view.fg
             fontFamily: content.view.fontFamily
-            hasCursor: content.view.hasCursorOn("icons")
-            onClicked: content.view.showPage("icons")
-            onHovered: function(h) { content.view.hoverAction("icons", h) }
+            hasCursor: content.view.hasCursorOn("settings")
+            onClicked: content.view.runAction("settings")
+            onHovered: function(h) { content.view.hoverAction("settings", h) }
           }
 
           PanelActionButton {
@@ -144,6 +181,7 @@ Item {
         wrapMode: Text.Wrap
         text: content.w.lastError !== "" ? content.w.lastError
           : (!content.w.loaded ? "Reading devices…"
+            : content.w.hiddenDevices.length > 0 ? "Every device is hidden. Settings brings them back."
             : content.w.receivers.length > 0 ? "No devices paired with " + content.w.receivers.join(", ")
             : "No Logitech receiver or device connected")
         color: content.w.lastError !== "" ? content.view.urgent : content.view.dim
@@ -167,13 +205,24 @@ Item {
           readonly property bool hasBacklight: !!modelData.backlight
           readonly property bool lightOn: content.w.backlightOn(modelData)
           readonly property real labelsGap: Style.space(8)
+          readonly property string drawerAction: "drawer:" + modelData.id
+          readonly property bool drawerOpen: content.view.drawerId === String(modelData.id)
           width: parent.width
           spacing: Style.space(7)
-          opacity: live ? 1.0 : 0.6
 
           Item {
             width: parent.width
-            implicitHeight: Math.max(kindGlyph.implicitHeight, labels.implicitHeight, percent.implicitHeight)
+            implicitHeight: Math.max(kindGlyph.implicitHeight, labels.implicitHeight, percent.implicitHeight, chevron.implicitHeight)
+            // An asleep device dims; its drawer below does not, since all of
+            // it works while the device sleeps.
+            opacity: deviceItem.live ? 1.0 : 0.6
+
+            // The whole row opens the drawer; the bulb and chevron sit on top.
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: content.view.runAction(deviceItem.drawerAction)
+            }
 
             Text {
               id: kindGlyph
@@ -235,7 +284,8 @@ Item {
                     ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
                     : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
                       + (deviceItem.lightOn ? "off" : "on")
-                      + (content.w.darkHoursText !== "" ? "\n" + content.w.darkHoursText : "")
+                      + (content.w.darkHoursText(deviceItem.modelData) !== ""
+                         ? "\n" + content.w.darkHoursText(deviceItem.modelData) : "")
                   onClicked: content.w.toggleBacklight(deviceItem.modelData)
                   onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
                 }
@@ -255,7 +305,8 @@ Item {
             Text {
               id: percent
               textFormat: Text.PlainText
-              anchors.right: parent.right
+              anchors.right: chevron.left
+              anchors.rightMargin: Style.space(2)
               anchors.verticalCenter: parent.verticalCenter
               text: (deviceItem.modelData.battery && deviceItem.modelData.battery.charging ? "󱐋 " : "")
                 + content.w.percentText(deviceItem.modelData)
@@ -264,6 +315,21 @@ Item {
               font.pixelSize: Style.font.heading
               font.bold: true
             }
+
+            PanelActionButton {
+              id: chevron
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              fontSize: Style.font.body
+              iconText: deviceItem.drawerOpen ? "󰅃" : "󰅀"
+              tooltipText: deviceItem.drawerOpen ? "Less" : "More for this device"
+              foreground: content.view.dim
+              hoverColor: content.view.fg
+              fontFamily: content.view.fontFamily
+              hasCursor: content.view.hasCursorOn(deviceItem.drawerAction)
+              onClicked: content.view.runAction(deviceItem.drawerAction)
+              onHovered: function(h) { content.view.hoverAction(deviceItem.drawerAction, h) }
+            }
           }
 
           // Charge bar
@@ -271,6 +337,7 @@ Item {
             width: parent.width
             implicitHeight: Style.space(6)
             visible: !!deviceItem.modelData.battery
+            opacity: deviceItem.live ? 1.0 : 0.6
 
             Rectangle {
               id: track
@@ -298,6 +365,11 @@ Item {
               }
             }
           }
+
+          DeviceDrawer {
+            visible: deviceItem.drawerOpen
+            device: deviceItem.modelData
+          }
         }
       }
 
@@ -308,7 +380,7 @@ Item {
       }
 
       MessageText {
-        visible: content.w.twilightError !== ""
+        visible: content.w.twilightError !== "" && content.w.darkKeyboards.length > 0
         text: "Dark hours are paused: " + content.w.twilightError
         urgent: true
       }
@@ -338,35 +410,10 @@ Item {
     width: parent.width
     spacing: Style.space(14)
 
-    Item {
-      width: parent.width
-      implicitHeight: Math.max(backButton.implicitHeight, pageTitle.implicitHeight)
-
-      PanelActionButton {
-        id: backButton
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        iconText: "󰁍"
-        tooltipText: "Back to devices"
-        foreground: content.view.fg
-        fontFamily: content.view.fontFamily
-        hasCursor: content.view.hasCursorOn("back")
-        onClicked: content.view.showPage("main")
-        onHovered: function(h) { content.view.hoverAction("back", h) }
-      }
-
-      Text {
-        id: pageTitle
-        anchors.left: backButton.right
-        anchors.leftMargin: Style.space(8)
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: "Bar icon"
-        color: content.view.fg
-        font.family: content.view.fontFamily
-        font.pixelSize: Style.font.title
-        font.bold: true
-      }
+    PageHeader {
+      view: content.view
+      title: "Bar icon"
+      backTooltip: "Back to devices"
     }
 
     PanelSeparator { foreground: content.view.fg }
@@ -402,6 +449,271 @@ Item {
       color: content.w.iconPickError !== "" ? content.view.urgent : content.view.dim
       font.family: content.view.fontFamily
       font.pixelSize: Style.font.caption
+    }
+  }
+
+  // ================= Settings and dark hours =================
+  SettingsPage {
+    id: settingsPage
+    visible: content.view.page === "settings"
+    w: content.w
+    view: content.view
+  }
+
+  DarkHoursPage {
+    id: darkHoursPage
+    visible: content.view.page === "darkhours"
+    w: content.w
+    view: content.view
+    // Back to what is saved each time the page is shown.
+    onVisibleChanged: if (visible) customLocation = content.w.darkHoursLocation !== ""
+  }
+
+  // What can be set for one device alone, under its row: a section per
+  // capability something fills (dark hours on a backlit keyboard, add-ons,
+  // add-ons to come), the other capabilities on one line, and Hide. Every
+  // Solaarchy control goes through Panel.qml's runAction, the same path the
+  // keyboard cursor takes.
+  component DeviceDrawer: Rectangle {
+    id: drawer
+    property var device: null
+    readonly property string deviceId: device ? String(device.id) : ""
+    readonly property bool ownDarkHours: !!device && content.w.hasOwnDarkHours(device)
+    readonly property var layout: device ? content.w.drawerSections(device) : ({ "sections": [], "also": [] })
+    width: parent ? parent.width : 0
+    implicitHeight: drawerColumn.implicitHeight + Style.space(20)
+    radius: Style.cornerRadius
+    color: Qt.rgba(content.view.fg.r, content.view.fg.g, content.view.fg.b, 0.05)
+
+    Column {
+      id: drawerColumn
+      x: Style.space(10)
+      y: Style.space(10)
+      width: parent.width - Style.space(20)
+      spacing: Style.space(12)
+
+      Repeater {
+        model: drawer.layout.sections
+
+        Column {
+          id: section
+          required property var modelData
+          width: parent.width
+          spacing: Style.space(8)
+
+          PanelSectionHeader {
+            text: section.modelData.label.toUpperCase()
+            foreground: content.view.fg
+            fontFamily: content.view.fontFamily
+          }
+
+          OptionRow {
+            visible: section.modelData.builtin
+            view: content.view
+            glyph: "󰖔"
+            label: "Dark hours"
+            caption: (drawer.ownDarkHours ? "Set for this keyboard" : "As in Settings")
+              + (drawer.device && content.w.darkHoursFor(drawer.device) && content.w.darkTimesText !== ""
+                 ? ": " + content.w.darkTimesText : "")
+
+            PanelActionButton {
+              visible: drawer.ownDarkHours
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰦛"
+              tooltipText: "Follow Settings again"
+              foreground: content.view.fg
+              fontFamily: content.view.fontFamily
+              hasCursor: content.view.hasCursorOn("dark-reset:" + drawer.deviceId)
+              onClicked: content.view.runAction("dark-reset:" + drawer.deviceId)
+              onHovered: function(h) { content.view.hoverAction("dark-reset:" + drawer.deviceId, h) }
+            }
+
+            ToggleSwitch {
+              anchors.verticalCenter: parent.verticalCenter
+              checked: !!drawer.device && content.w.darkHoursFor(drawer.device)
+              foreground: content.view.fg
+              hasCursor: content.view.hasCursorOn("dark-own:" + drawer.deviceId)
+              onToggled: content.view.runAction("dark-own:" + drawer.deviceId)
+              onHovered: function(h) { content.view.hoverAction("dark-own:" + drawer.deviceId, h) }
+            }
+
+            PanelActionButton {
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "󰅂"
+              tooltipText: "Times, offset and location"
+              foreground: content.view.fg
+              fontFamily: content.view.fontFamily
+              hasCursor: content.view.hasCursorOn("dark-page")
+              onClicked: content.view.runAction("dark-page")
+              onHovered: function(h) { content.view.hoverAction("dark-page", h) }
+            }
+          }
+
+          Repeater {
+            model: section.modelData.addons
+
+            AddonSlot {
+              required property var modelData
+              addon: modelData
+              device: drawer.device
+            }
+          }
+
+          Repeater {
+            model: section.modelData.off
+
+            MessageText {
+              required property var modelData
+              text: modelData.label + " is installed but turned off in Omarchy's plugins."
+            }
+          }
+
+          Repeater {
+            model: section.modelData.known
+
+            LabelButton {
+              required property var modelData
+              available: false
+              glyph: "󰕦"
+              text: modelData.label + " · in development"
+              tooltip: modelData.note
+            }
+          }
+        }
+      }
+
+      MessageText {
+        visible: drawer.layout.also.length > 0
+        text: "Also: " + drawer.layout.also.join(" · ") + ". No add-on for these yet."
+      }
+
+      MessageText {
+        visible: !!drawer.device && content.w.featuresOf(drawer.device) === null
+        text: "What it can do shows here once it has been read awake."
+      }
+
+      LabelButton {
+        glyph: "󰈉"
+        text: "Hide this device"
+        tooltip: "Settings brings it back"
+        action: "hide:" + drawer.deviceId
+      }
+    }
+  }
+
+  // One add-on in a device's drawer: its own drawer QML (mouse only: the
+  // keyboard cursor stays on Solaarchy's controls), and a button for its
+  // floating panel when it has one.
+  component AddonSlot: Column {
+    id: slot
+    property var addon
+    property var device
+    width: parent ? parent.width : 0
+    spacing: Style.space(6)
+
+    AddonHost {
+      id: host
+      addon: slot.addon
+      device: slot.device
+    }
+
+    Loader {
+      id: addonLoader
+      width: parent.width
+      Component.onCompleted: {
+        // A fresh device each time: the whole row is rebuilt when it changes.
+        if (slot.addon.drawer !== "")
+          setSource(Util.fileUrl(slot.addon.drawer), { "device": content.w.addonDevice(slot.device), "host": host })
+      }
+    }
+
+    MessageText {
+      visible: addonLoader.status === Loader.Error
+      text: slot.addon.label + " could not load its drawer."
+      urgent: true
+    }
+
+    LabelButton {
+      visible: slot.addon.panel
+      glyph: slot.addon.icon !== "" ? slot.addon.icon : "󰏌"
+      text: "Open " + slot.addon.label
+      action: "addon:" + slot.addon.id + ":" + String(slot.device.id)
+    }
+  }
+
+  // What an add-on's drawer QML gets as `host` (api 1, see ADDONS.md).
+  component AddonHost: QtObject {
+    property var addon
+    property var device
+    readonly property int api: 1
+    readonly property color foreground: content.view.fg
+    readonly property color dim: content.view.dim
+    readonly property color urgent: content.view.urgent
+    readonly property string fontFamily: content.view.fontFamily
+    readonly property string lockPath: content.w.lockPath
+
+    // Opens the add-on's own panel; extra keys join {"device": {...}}.
+    function openPanel(extra) { content.w.openAddonPanel(addon, device, extra) }
+    // A fresh device read, after the add-on changed something.
+    function refresh() { content.w.refresh() }
+  }
+
+  // A small button with words, in the Solaar button's look. Not available:
+  // dimmed, but still shows its tooltip.
+  component LabelButton: BorderSurface {
+    id: labelButton
+    property string glyph: ""
+    property string text: ""
+    property string tooltip: ""
+    property string action: ""
+    property bool available: true
+    readonly property bool hot: available && (labelMouse.containsMouse || content.view.hasCursorOn(action))
+    implicitWidth: labelRow.implicitWidth + Style.space(12)
+    implicitHeight: Math.max(Style.space(22), labelRow.implicitHeight + Style.space(4))
+    radius: Style.cornerRadius
+    color: hot ? Style.hoverFillFor(content.view.fg, content.view.fg) : "transparent"
+    borderSpec: Border.none()
+    opacity: available ? 1.0 : 0.5
+
+    Behavior on color { ColorAnimation { duration: 60 } }
+
+    Row {
+      id: labelRow
+      anchors.centerIn: parent
+      spacing: Style.space(6)
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: labelButton.glyph
+        color: content.view.dim
+        font.family: content.view.fontFamily
+        font.pixelSize: Style.font.body
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: labelButton.text
+        color: content.view.dim
+        font.family: content.view.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+
+    MouseArea {
+      id: labelMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: labelButton.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onContainsMouseChanged: if (labelButton.available) content.view.hoverAction(labelButton.action, containsMouse)
+      onClicked: if (labelButton.available) content.view.runAction(labelButton.action)
+    }
+
+    PanelToolTip {
+      visible: labelMouse.containsMouse && labelButton.tooltip !== ""
+      text: labelButton.tooltip
+      fontFamily: content.view.fontFamily
     }
   }
 
