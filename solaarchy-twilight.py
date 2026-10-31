@@ -13,7 +13,9 @@ Prints one JSON line:
   {"dark": true, "until": 1793430000, "dusk": "17:13", "dawn": "06:18",
    "lat": 48.22, "lon": 16.33, "source": "Europe/Vienna"}
 "dusk"/"dawn" are today's local switch times, null when the sun never
-crosses -6 degrees today. On failure: {"error": "..."}.
+crosses -6 degrees today. "darkToday" lists today's dark spans as
+[start, end] local clock minutes, 0..1440, offset included, for drawing.
+On failure: {"error": "..."}.
 
 --test runs the self-check.
 """
@@ -55,8 +57,8 @@ def civil_twilight(day, lat, lon):
     return dawn, dusk
 
 
-def schedule(now, lat, lon, offset):
-    """(dark now, next change as a UTC datetime, today's (dawn, dusk) or None).
+def light_spans(now, lat, lon, offset):
+    """Merged light intervals around now, and today's (dawn, dusk) or None.
 
     Light is each day's [dawn + offset, dusk - offset]. Intervals are merged,
     so an offset larger than a short night (or day) removes it rather than
@@ -64,8 +66,9 @@ def schedule(now, lat, lon, offset):
     """
     pad = timedelta(minutes=offset)
     light, today = [], None
+    base = now.astimezone().date()  # the local date: near midnight the UTC one is a day off
     for i in range(-2, 4):
-        day = (now + timedelta(days=i)).date()
+        day = base + timedelta(days=i)
         t = civil_twilight(day, lat, lon)
         if t == "light":
             midnight = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
@@ -84,12 +87,47 @@ def schedule(now, lat, lon, offset):
             merged[-1][1] = max(merged[-1][1], b)
         else:
             merged.append([a, b])
+    return merged, today
+
+
+def schedule(now, lat, lon, offset):
+    """(dark now, next change as a UTC datetime, today's (dawn, dusk) or None)."""
+    merged, today = light_spans(now, lat, lon, offset)
     for a, b in merged:
         if a <= now < b:
             return False, b, today
         if a > now:
             return True, a, today
     return True, None, today
+
+
+def dark_today(now, lat, lon, offset):
+    """Today's dark spans as [start, end] local clock minutes, 0..1440.
+
+    Clock minutes, not elapsed ones, so a 23- or 25-hour DST day still maps
+    onto a 24-hour strip the way its times read.
+    """
+    merged, _ = light_spans(now, lat, lon, offset)
+    d = now.astimezone().date()
+    start = datetime(d.year, d.month, d.day).astimezone()
+    end = (datetime(d.year, d.month, d.day) + timedelta(days=1)).astimezone()
+
+    def minute(t):
+        if t >= end:
+            return 1440
+        t = t.astimezone()
+        return t.hour * 60 + t.minute
+
+    spans, cursor = [], start
+    for a, b in merged:
+        if b <= cursor or a >= end:
+            continue
+        if a > cursor:
+            spans.append([minute(cursor), minute(a)])
+        cursor = b
+    if cursor < end:
+        spans.append([minute(cursor), 1440])
+    return [s for s in spans if s[1] > s[0]]
 
 
 def zone_location():
@@ -136,10 +174,13 @@ def main(argv):
 
     return {"dark": dark, "until": int(until.timestamp()) if until else None,
             "dawn": local(today and today[0]), "dusk": local(today and today[1]),
+            "darkToday": dark_today(now, lat, lon, offset),
             "lat": round(lat, 2), "lon": round(lon, 2), "source": source}
 
 
 def test():
+    os.environ["TZ"] = "Europe/Vienna"  # the local-day cases below are Vienna days
+    time.tzset()
     vienna = 48.2167, 16.3333
     # Vienna 2026-06-21 per sunrise-sunset.org: civil dawn 02:12:28, dusk 19:40:29 UTC.
     dawn, dusk = civil_twilight(date(2026, 6, 21), *vienna)
@@ -166,6 +207,20 @@ def test():
     light, back = schedule(until, 69.65, 18.96, 120)[:2]
     assert dark and not light and back - until < timedelta(hours=3), (until, back)
     assert schedule(datetime(2026, 12, 21, 12, 0, tzinfo=timezone.utc), 70.98, 25.97, 120)[0]  # North Cape: none left
+    # 00:30 local is still 23:30 UTC the day before: today is the local day.
+    _, _, (dawn, _) = schedule(datetime(2026, 10, 31, 23, 30, tzinfo=timezone.utc), *vienna, 0)
+    assert dawn.astimezone().date() == date(2026, 11, 1), dawn
+    # The strip: dark from midnight to dawn and from dusk to midnight, in clock minutes.
+    spans = dark_today(noon, *vienna, 0)
+    _, _, (dawn, dusk) = schedule(noon, *vienna, 0)
+    clock = lambda t: t.astimezone().hour * 60 + t.astimezone().minute
+    assert spans == [[0, clock(dawn)], [clock(dusk), 1440]], spans
+    # DST day (2026-03-29, 23 hours): still two spans on a 0..1440 clock, dawn after 05:00 CEST.
+    spans = dark_today(datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc), *vienna, 0)
+    assert len(spans) == 2 and spans[0][0] == 0 and spans[1][1] == 1440, spans
+    assert 300 < spans[0][1] < 420 and 1140 < spans[1][0] < 1260, spans
+    assert dark_today(datetime(2026, 12, 21, 12, 0, tzinfo=timezone.utc), 78.22, 15.65, 0) == [[0, 1440]]
+    assert dark_today(datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc), 78.22, 15.65, 0) == []
     assert parse_location("48.21, 16.37") == (48.21, 16.37)
     assert parse_location("-33.9 151.2") == (-33.9, 151.2)
     print("ok")
