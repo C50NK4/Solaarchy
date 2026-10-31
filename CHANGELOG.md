@@ -30,6 +30,10 @@
   Built-in add-ons live in `addons/`: Circadian, and Rainbow LED, an
   experimental mock-up that is off by default. See addons/ADDONS.md. Haptics
   for the MX Master 4 is the first curated add-on, in development.
+- **Auto bar icon:** `auto` and `auto-outline` draw the keyboard, the mouse,
+  or both, after the devices the panel lists (asleep ones included, hidden
+  ones not). They lead the picker's device rows, which now have four
+  columns.
 - The widget hides whenever nothing Logitech is here: no receiver, no device
   connected, none paired over Bluetooth. Before, a device seen once kept it
   in the bar.

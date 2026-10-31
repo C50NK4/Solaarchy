@@ -212,6 +212,7 @@ disabled gets nothing loaded.
 | Icons                                                              | Values                                                               |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
 | Solaar's own icon (default)                                        | `solaar`                                                             |
+| Auto: the keyboard, the mouse, or both, after the devices listed   | `auto`, `auto-outline`                                               |
 | Mouse, filled and outline                                          | `mouse`, `mouse-outline`                                             |
 | Keyboard, filled and outline                                       | `keyboard`, `keyboard-outline`                                       |
 | Keyboard + mouse, filled and outline                               | `combo`, `combo-outline`                                             |
