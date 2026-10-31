@@ -235,6 +235,7 @@ Item {
                     ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
                     : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
                       + (deviceItem.lightOn ? "off" : "on")
+                      + (content.w.darkHoursText !== "" ? "\n" + content.w.darkHoursText : "")
                   onClicked: content.w.toggleBacklight(deviceItem.modelData)
                   onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
                 }
@@ -303,6 +304,12 @@ Item {
       MessageText {
         visible: content.w.actionError !== ""
         text: content.w.actionError
+        urgent: true
+      }
+
+      MessageText {
+        visible: content.w.twilightError !== ""
+        text: "Dark hours are paused: " + content.w.twilightError
         urgent: true
       }
 

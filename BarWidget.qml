@@ -19,6 +19,8 @@ import "icons.js" as Icons
 //     connecting and disconnecting, and receivers coming and going
 //   - the backlight switch runs `solaar config`, which hands the change to a
 //     running Solaar GUI so it is saved and re-applied when the keyboard wakes
+//   - dark hours: solaarchy-twilight.py works out civil dusk and dawn, and the
+//     same backlight switch runs once at each
 BarWidget {
   id: root
   moduleName: "io.github.c50nk4.solaarchy"
@@ -47,6 +49,10 @@ BarWidget {
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 300, 60, 3600)
   readonly property int lowThreshold: intSetting("lowThreshold", 15, 5, 50)
   readonly property bool hideWhenDisconnected: boolSetting("hideWhenDisconnected", true)
+  readonly property string twilightPath: localPath("solaarchy-twilight.py")
+  readonly property bool darkHours: boolSetting("darkHours", false)
+  readonly property int darkHoursOffset: intSetting("darkHoursOffset", 0, -120, 120)
+  readonly property string darkHoursLocation: String(setting("darkHoursLocation", "")).trim()
   readonly property string home: Quickshell.env("HOME")
   readonly property string statePath: home + "/.local/state/omarchy/solaarchy.json"
 
@@ -140,6 +146,17 @@ BarWidget {
   // Device id -> 0/1 while a backlight switch to off/on is in flight
   // (optimistic UI); empty when idle.
   property var pendingBacklight: ({})
+  // solaarchy-twilight.py's last answer ({dark, until, dusk, dawn, ...}).
+  property var twilight: null
+  property string twilightError: ""
+  // Dark hours switch the backlight once per dusk and dawn, so a manual
+  // switch in between stands until the next one. darkApplied is the state
+  // last applied (saved, so a shell restart doesn't redo it); darkTarget one
+  // still waiting for a live keyboard; darkSwitching the one being written.
+  property var darkApplied: null
+  property var darkTarget: null
+  property var darkSwitching: null
+  property bool twilightQueued: false
   property bool refreshQueued: false
 
   readonly property bool refreshing: statusProc.running
@@ -434,6 +451,7 @@ BarWidget {
     loaded = true
     checkLowBattery()
     saveState()
+    applyDarkHours()
   }
 
   // Warn once per discharge. Only fresh readings count: a stale reading from
@@ -479,7 +497,8 @@ BarWidget {
       version: 1,
       receivers: receivers,
       devices: devices,
-      lowNotified: lowNotified
+      lowNotified: lowNotified,
+      darkApplied: darkApplied
     }) + "\n"
     if (text === savedText) return
     savedText = text
@@ -494,6 +513,7 @@ BarWidget {
     savedText = raw
     if (Util.isPlainObject(doc.lowNotified))
       lowNotified = Object.assign({}, doc.lowNotified, lowNotified)
+    if (typeof doc.darkApplied === "boolean" && darkApplied === null) darkApplied = doc.darkApplied
     if (loaded || !Array.isArray(doc.devices)) return
     if (Array.isArray(doc.receivers)) receivers = doc.receivers.map(String)
     var restored = []
@@ -555,7 +575,10 @@ BarWidget {
   function toggleBacklight(device) {
     device = device || keyboard
     if (!device || !device.backlight || backlightProc.running) return
-    var target = backlightOn(device) ? 0 : 1
+    setBacklight(device, backlightOn(device) ? 0 : 1)
+  }
+
+  function setBacklight(device, target) {
     var next = Object.assign({}, pendingBacklight)
     next[device.id] = target
     pendingBacklight = next
@@ -572,6 +595,63 @@ BarWidget {
       solaarDeviceArg(device), "backlight", target === 1 ? "lowest" : "highest"]
     backlightProc.running = true
   }
+
+  // The command is built here, not bound: a settings change handler runs
+  // before the binding would have caught up, and the helper got the old value.
+  function runTwilight() {
+    if (!darkHours) return
+    if (twilightProc.running) { twilightQueued = true; return }
+    twilightProc.command = ["/usr/bin/python3", twilightPath, String(darkHoursOffset), darkHoursLocation]
+    twilightProc.running = true
+  }
+
+  function applyTwilight(raw) {
+    var doc = null
+    try { doc = JSON.parse(String(raw).trim()) } catch (e) { doc = { error: "could not work out dusk and dawn" } }
+    // Asked again at the next switch, and at least every 10 minutes, which
+    // also catches a dusk or dawn that passed while the computer slept.
+    var wait = doc.until ? doc.until * 1000 - Date.now() + 2000 : 600000
+    twilightTimer.interval = Math.max(5000, Math.min(600000, wait))
+    twilightTimer.restart()
+    twilightError = doc.error ? String(doc.error) : ""
+    twilight = doc.error ? null : doc
+    if (twilight && twilight.dark !== darkApplied) {
+      darkTarget = twilight.dark
+      applyDarkHours()
+    }
+  }
+
+  // ponytail: only the keyboard right-click toggles (the first backlit one);
+  // a second backlit keyboard keeps its own state.
+  function applyDarkHours() {
+    if (!darkHours || darkTarget === null || backlightProc.running) return
+    var device = keyboard
+    if (!device || !isLive(device)) return  // retried after the next read
+    if (backlightOn(device) === darkTarget) {
+      darkApplied = darkTarget
+      darkTarget = null
+      saveState()
+      return
+    }
+    darkSwitching = darkTarget
+    setBacklight(device, darkTarget ? 1 : 0)
+  }
+
+  onDarkHoursChanged: {
+    if (!darkHours) {
+      twilight = null
+      twilightError = ""
+      darkTarget = null
+      twilightTimer.stop()
+    }
+    runTwilight()
+  }
+  onDarkHoursOffsetChanged: runTwilight()
+  onDarkHoursLocationChanged: runTwilight()
+
+  readonly property string darkHoursText: !darkHours || !twilight ? ""
+    : twilight.dusk && twilight.dawn ? "Dark hours: on at " + twilight.dusk + ", off at " + twilight.dawn
+    : "Dark hours: " + (twilight.dark ? "dark" : "light") + " all day"
 
   function openSolaar() {
     // A running Solaar is a GApplication: a second launch just raises its window.
@@ -755,8 +835,34 @@ BarWidget {
         root.pendingBacklight = ({})
         root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not switch the backlight"
       }
+      if (root.darkSwitching !== null) {
+        // A failed switch is retried with the next twilight check, not the
+        // next read, which would loop on a keyboard that keeps refusing.
+        if (exitCode === 0) root.darkApplied = root.darkSwitching
+        root.darkTarget = null
+        root.darkSwitching = null
+        root.saveState()
+      }
       root.refresh()
     }
+  }
+
+  Process {
+    id: twilightProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyTwilight(text)
+    }
+    onExited: {
+      if (!root.twilightQueued) return
+      root.twilightQueued = false
+      Qt.callLater(root.runTwilight)
+    }
+  }
+
+  Timer {
+    id: twilightTimer
+    onTriggered: root.runTwilight()
   }
 
   // `solaar config` has no timeout of its own; if the device is unreachable
@@ -786,10 +892,18 @@ BarWidget {
     interval: 30000
     running: true
     repeat: true
-    onTriggered: root.nowTick++
+    onTriggered: {
+      root.nowTick++
+      // Timers stop counting while the computer sleeps; a wall-clock check
+      // here switches within 30 s of waking past a dusk or dawn.
+      if (root.twilight && root.twilight.until && Date.now() >= root.twilight.until * 1000) root.runTwilight()
+    }
   }
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    runTwilight()
+  }
 
   // The file dialog for the "+" tile. Exit 0 prints the installed file's name,
   // 1 means the dialog was cancelled, 2 prints why it failed on stderr.

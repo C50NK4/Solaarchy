@@ -26,7 +26,10 @@
       "customIconDir": "",
       "refreshIntervalSec": 300,
       "lowThreshold": 15,
-      "hideWhenDisconnected": true
+      "hideWhenDisconnected": true,
+      "darkHours": false,
+      "darkHoursOffset": 0,
+      "darkHoursLocation": ""
     },
     "schema": [
       {
@@ -85,6 +88,30 @@
         "label": "Hide when no receiver",
         "description": "Hide the widget while no Logitech receiver or device is connected. It reappears when one is plugged in.",
         "defaultValue": true
+      },
+      {
+        "key": "darkHours",
+        "type": "boolean",
+        "label": "Dark hours",
+        "description": "Turn the keyboard backlight on at civil dusk and off at civil dawn. Switching it by hand in between holds until the next dusk or dawn.",
+        "defaultValue": false
+      },
+      {
+        "key": "darkHoursOffset",
+        "type": "integer",
+        "label": "Dark hours offset (minutes)",
+        "description": "Widens the dark hours on both ends: 30 turns the light on 30 minutes before dusk and off 30 minutes after dawn. Negative narrows them.",
+        "min": -120,
+        "max": 120,
+        "step": 5,
+        "defaultValue": 0
+      },
+      {
+        "key": "darkHoursLocation",
+        "type": "string",
+        "label": "Dark hours location",
+        "description": "Latitude and longitude, for example 48.21, 16.37 (south and west negative). Empty uses your timezone's city, which can be hundreds of kilometres off in a wide timezone.",
+        "defaultValue": ""
       }
     ]
   }

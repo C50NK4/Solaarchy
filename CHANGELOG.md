@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Dark hours: the keyboard backlight can switch on at civil dusk and off at
+  civil dawn, so it lights up when you sit down before sunrise even after you
+  turned it off during the day. Optional offset in minutes, and your own
+  coordinates instead of your timezone's city. Off by default.
+
 ## 1.0.4
 
 - The "Live updates are broken" message clears as soon as the live monitor

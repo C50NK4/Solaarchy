@@ -120,6 +120,34 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `lowThreshold`         | `15`     | Battery % at or below which the icon turns urgent and a notification is sent      |
 | `refreshIntervalSec`   | `300`    | Backup poll. Connection changes are picked up immediately either way               |
 | `hideWhenDisconnected` | `true`   | Hide the widget while no Logitech receiver or device is connected                 |
+| `darkHours`            | `false`  | Backlight on at civil dusk, off at civil dawn, see below                           |
+| `darkHoursOffset`      | `0`      | Minutes added to the dark hours on both ends (−120 to 120)                         |
+| `darkHoursLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means your timezone's city                     |
+
+### Dark hours
+
+With `darkHours` on, the keyboard backlight is switched on at civil dusk and
+off at civil dawn, when the sun is 6° below the horizon: the time it gets too
+dark to see the keys, a while after sunset and before sunrise. The keyboard
+still decides by itself when to light up, as when you switch it on by hand.
+Dark hours only make sure it is switched on when you need it, for example
+when you sit down before dawn.
+
+- A switch by hand, with the bulb or a right-click, holds until the next dusk
+  or dawn.
+- Dusk and dawn are worked out locally. With no `darkHoursLocation` the
+  reference city of your timezone is used (Vienna for `Europe/Vienna`); set
+  your own coordinates if you live far from it, since dusk moves with latitude
+  as well as longitude.
+- In polar night or white nights, when the sun stays below or above −6° all
+  day, the backlight just stays on or off.
+- The bulb's tooltip shows today's switch times.
+
+```sh
+omarchy bar set io.github.c50nk4.solaarchy darkHours true --json
+omarchy bar set io.github.c50nk4.solaarchy darkHoursOffset 30 --json
+omarchy bar set io.github.c50nk4.solaarchy darkHoursLocation "47.07, 15.44"
+```
 
 ### Bar icons
 
@@ -213,7 +241,9 @@ Solaarchy does:
   events. It never writes to a device. The kernel stops it together with the
   shell.
 - **Changing things:** only when you ask. Toggling the backlight runs
-  `solaar config <device> backlight …`. Picking a bar icon runs
+  `solaar config <device> backlight …`; with dark hours on, the same command
+  runs once at dusk and once at dawn. `solaarchy-twilight.py` works out those
+  times from your settings or your timezone, offline. Picking a bar icon runs
   `omarchy bar set … icon …`. Opening Solaar runs `uwsm-app -- solaar`.
 - **Files:** last readings are saved to
   `~/.local/state/omarchy/solaarchy.json`. Settings live in
