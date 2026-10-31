@@ -123,23 +123,25 @@ BarWidget {
   // device keeps its last battery reading (flagged stale) instead of vanishing.
   // The list is saved to statePath, so that also survives a shell restart.
   property var devices: []
-  // The asleep link of a unit that is online on another connection stays in
-  // `devices` (and the saved state) so it can come back when the live link
-  // drops. The panel lists `shown`. Both asleep, or both online, stay listed.
-  // A hidden device stays in `devices` (and the saved state), so it is still
-  // known when it comes back, but it leaves everything built on `shown`.
+  // One row per unit: its online link, else the link read last. The other
+  // links of a unit paired twice (a receiver slot and Bluetooth) stay in
+  // `devices` (and the saved state) so each can come back when it is the one
+  // in use. The panel lists `shown`. A hidden device stays in `devices` too,
+  // so it is still known when it comes back, but it leaves everything built
+  // on `shown`.
   readonly property var shown: {
-    var live = {}
-    for (var i = 0; i < devices.length; i++)
-      if (devices[i].online) live[String(devices[i].id)] = true
-    var out = []
-    for (var j = 0; j < devices.length; j++) {
-      var d = devices[j]
-      if (isHidden(d) || (!d.online && live[String(d.id)])) continue
-      out.push(d)
+    var best = {}
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (isHidden(d)) continue
+      var b = best[String(d.id)]
+      if (!b || (d.online && !b.online) || (!!d.online === !!b.online && readAt(d) > readAt(b)))
+        best[String(d.id)] = d
     }
-    return out
+    return devices.filter(function(d) { return best[String(d.id)] === d })
   }
+
+  function readAt(d) { return d.battery && d.battery.readAt ? d.battery.readAt : 0 }
   // One entry per hidden unit, for the Settings page to bring it back.
   readonly property var hiddenDevices: {
     var seen = {}
