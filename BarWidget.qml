@@ -61,11 +61,14 @@ BarWidget {
   // only after this long without a live link.
   readonly property int goneAfterMs: 300000
   readonly property string twilightPath: localPath("solaarchy-twilight.py")
+  // The built-in add-ons' switches (Settings): dark hours, and Blink.
   readonly property bool darkHours: boolSetting("darkHours", false)
+  readonly property bool blink: boolSetting("blink", false)
   readonly property int darkHoursOffset: intSetting("darkHoursOffset", 0, -120, 120)
   readonly property string darkHoursLocation: String(cfg("darkHoursLocation", "")).trim()
   // Per-device choices by device id, from each device's drawer:
-  // {"<id>": {"darkHours": true|false, "hidden": true}}.
+  // {"<id>": {"darkHours": false, "hidden": true}}; darkHours false skips
+  // that keyboard.
   readonly property var deviceSettings: {
     var all = cfg("devices", null)
     return Util.isPlainObject(all) ? all : ({})
@@ -573,6 +576,7 @@ BarWidget {
     checkLowBattery()
     checkConnections(paired)
     saveState()
+    stepBlinkRestore()
     applyDarkHours()
   }
 
@@ -675,7 +679,9 @@ BarWidget {
       devices: devices,
       lowNotified: lowNotified,
       announcedGone: announcedGone,
-      darkApplied: darkApplied
+      darkApplied: darkApplied,
+      // A restart ends blinking, so the keyboards blinking now count too.
+      blinkRestore: Object.assign({}, blinking, blinkRestore)
     }) + "\n"
     if (text === savedText) return
     savedText = text
@@ -692,6 +698,8 @@ BarWidget {
       lowNotified = Object.assign({}, doc.lowNotified, lowNotified)
     if (Util.isPlainObject(doc.announcedGone))
       announcedGone = Object.assign({}, doc.announcedGone, announcedGone)
+    if (Util.isPlainObject(doc.blinkRestore))
+      blinkRestore = Object.assign({}, doc.blinkRestore, blinkRestore)
     if (Util.isPlainObject(doc.darkApplied)) {
       darkApplied = Object.assign({}, doc.darkApplied, darkApplied)
     } else if (typeof doc.darkApplied === "boolean" && Array.isArray(doc.devices)) {
@@ -787,14 +795,11 @@ BarWidget {
     backlightProc.running = true
   }
 
-  // Dark hours for one keyboard: its own choice from its drawer, else the
-  // switch on the Settings page.
-  function darkHoursFor(device) {
-    var own = deviceSetting(device, "darkHours")
-    return typeof own === "boolean" ? own : darkHours
-  }
+  // Dark hours for one keyboard: the add-on's switch, unless the keyboard is
+  // skipped in its drawer.
+  function darkHoursFor(device) { return darkHours && !darkSkipped(device) }
 
-  function hasOwnDarkHours(device) { return typeof deviceSetting(device, "darkHours") === "boolean" }
+  function darkSkipped(device) { return deviceSetting(device, "darkHours") === false }
 
   // The backlit keyboards dark hours switches, one row per unit.
   readonly property var darkKeyboards: {
@@ -809,7 +814,7 @@ BarWidget {
     return out
   }
   readonly property var backlitKeyboards: shown.filter(function(d) { return !!d.backlight })
-  readonly property bool twilightActive: darkHours || darkKeyboards.length > 0 || twilightPreview
+  readonly property bool twilightActive: darkHours || twilightPreview
 
   // Switching dark hours on applies the current state at once, not at the
   // next dusk or dawn: forget what was last applied to the keyboards it
@@ -822,16 +827,14 @@ BarWidget {
 
   function setDarkHours(on) {
     if (on && !darkHours)
-      forgetApplied(backlitKeyboards.filter(function(d) { return !hasOwnDarkHours(d) }))
+      forgetApplied(backlitKeyboards.filter(function(d) { return !darkSkipped(d) }))
     saveSetting("darkHours", on)
   }
 
-  // own: true/false sets this keyboard's choice, undefined follows the
-  // Settings switch again.
-  function setDeviceDarkHours(device, own) {
-    var after = typeof own === "boolean" ? own : darkHours
-    if (after && !darkHoursFor(device)) forgetApplied([device])
-    saveDeviceSetting(device, "darkHours", own)
+  // follow: false skips this keyboard, true follows dark hours again.
+  function setDeviceDarkHours(device, follow) {
+    if (follow && darkHours && !darkHoursFor(device)) forgetApplied([device])
+    saveDeviceSetting(device, "darkHours", follow ? undefined : false)
   }
 
   // The command is built here, not bound: a settings change handler runs
@@ -867,6 +870,8 @@ BarWidget {
       var d = shown[i]
       var id = String(d.id)
       if (!d.backlight || !darkHoursFor(d) || darkApplied[id] === dark || darkFailed[id]) continue
+      // Blink has it; switched once Blink has put it back.
+      if (blinking.hasOwnProperty(id) || blinkRestore.hasOwnProperty(id)) continue
       if (!isLive(d)) continue  // retried after the next read
       if (backlightOn(d) === dark) {
         darkApplied[id] = dark
@@ -917,6 +922,81 @@ BarWidget {
     return clockText(d.getHours() * 60 + d.getMinutes())
   }
 
+  // ---- Blink: a built-in add-on, just for fun ----
+
+  // The backlight on and off in a slow loop, per keyboard from its drawer.
+  // blinking: id -> whether the light was on before; blinkRestore: those
+  // still to put back. Blinking stops with the shell, but what it must put
+  // back is saved, so a restart mid-blink still restores the light.
+  property var blinking: ({})
+  property var blinkRestore: ({})
+  property bool blinkSwitching: false
+  property int blinkTurn: 0
+
+  function isBlinking(device) { return !!device && blinking.hasOwnProperty(String(device.id)) }
+
+  // The awake backlit link of a unit, hidden ones too; null while it sleeps.
+  function liveBacklit(id) {
+    for (var i = 0; i < devices.length; i++)
+      if (String(devices[i].id) === String(id) && devices[i].backlight && isLive(devices[i])) return devices[i]
+    return null
+  }
+
+  function setBlinking(id, on) {
+    id = String(id)
+    var next = Object.assign({}, blinking)
+    var back = Object.assign({}, blinkRestore)
+    if (on && !next.hasOwnProperty(id)) {
+      var d = liveBacklit(id)
+      if (!d) return
+      // Already waiting to be put back: keep the state from before.
+      next[id] = back.hasOwnProperty(id) ? back[id] : backlightOn(d)
+      delete back[id]
+    } else if (!on && next.hasOwnProperty(id)) {
+      back[id] = next[id]
+      delete next[id]
+    } else {
+      return
+    }
+    blinking = next
+    blinkRestore = back
+    saveState()
+    stepBlinkRestore()
+  }
+
+  onBlinkChanged: if (!blink) for (var id in blinking) setBlinking(id, false)
+
+  // Puts one keyboard back; the read after that switch comes back here for
+  // the next. One asleep now is put back once it wakes.
+  function stepBlinkRestore() {
+    if (backlightProc.running) return
+    for (var id in blinkRestore) {
+      var d = liveBacklit(id)
+      if (!d) continue
+      var on = blinkRestore[id]
+      var back = Object.assign({}, blinkRestore)
+      delete back[id]
+      blinkRestore = back
+      saveState()
+      if (backlightOn(d) !== on) { setBacklight(d, on ? 1 : 0); return }
+    }
+  }
+
+  // One switch per tick, keyboards in turn; a sleeping one is skipped.
+  function blinkStep() {
+    stepBlinkRestore()
+    if (backlightProc.running) return
+    var ids = Object.keys(blinking)
+    for (var k = 0; k < ids.length; k++) {
+      var d = liveBacklit(ids[(blinkTurn + k) % ids.length])
+      if (!d) continue
+      blinkTurn = (blinkTurn + k + 1) % ids.length
+      blinkSwitching = true
+      setBacklight(d, backlightOn(d) ? 0 : 1)
+      return
+    }
+  }
+
   // ---- Capabilities and add-ons ----
 
   // A device's HID++ feature names (Solaar's), from whichever of its links
@@ -953,15 +1033,42 @@ BarWidget {
     return id
   }
 
-  // Add-ons Solaarchy knows of before they exist, shown greyed where they fit.
-  readonly property var knownAddons: [
-    { "category": "haptics", "label": "Haptics add-on",
-      "note": "Haptic feedback for this mouse, as its own plugin. In development; nothing to install yet." }
+  // Curated: add-ons reviewed for Solaarchy, listed (and shown greyed where
+  // they fit) before they're installed. id: its plugin id, "" until it
+  // exists; repo, page: its repository and plugins.omarchy.org page, if any.
+  readonly property var curatedAddons: [
+    { "id": "", "category": "haptics", "label": "Haptics", "icon": "󰕦", "repo": "", "page": "",
+      "note": "Haptic feedback for the MX Master 4, as its own plugin. In development; nothing to install yet." }
   ]
 
   // solaarchy-addons.py's last answer; re-read each time the panel opens.
   property var addons: []
   property var addonErrors: []
+
+  function installedAddon(id) {
+    for (var i = 0; i < addons.length; i++)
+      if (id !== "" && addons[i].id === id) return addons[i]
+    return null
+  }
+
+  // Installed add-ons that aren't curated.
+  readonly property var otherAddons: addons.filter(function(a) {
+    return !curatedAddons.some(function(c) { return c.id === a.id })
+  })
+
+  // An installed add-on's plugin on or off in Omarchy, as `omarchy plugin
+  // enable/disable` does; the switch moves at once and the list is read again.
+  function setAddonEnabled(addon, on) {
+    if (addonToggleProc.running) return
+    addons = addons.map(function(a) { return a.id === addon.id ? Object.assign({}, a, { "enabled": on }) : a })
+    addonToggleProc.command = ["omarchy", "plugin", on ? "enable" : "disable", addon.id]
+    addonToggleProc.running = true
+  }
+
+  function openLink(url) {
+    Util.execArgv(["uwsm-app", "--", "xdg-open", url])
+    close()
+  }
 
   function applyAddons(raw) {
     try {
@@ -999,7 +1106,9 @@ BarWidget {
       var fit = addons.filter(function(a) { return addonFits(a, device, cat.id) })
       var on = fit.filter(function(a) { return a.enabled })
       var off = fit.filter(function(a) { return !a.enabled })
-      var known = fit.length > 0 ? [] : knownAddons.filter(function(k) { return k.category === cat.id })
+      var known = fit.length > 0 ? [] : curatedAddons.filter(function(k) {
+        return k.category === cat.id && !installedAddon(k.id)
+      })
       if (builtin || fit.length > 0 || known.length > 0)
         sections.push({ "id": cat.id, "label": cat.label, "builtin": builtin, "addons": on, "off": off, "known": known })
       else
@@ -1211,6 +1320,14 @@ BarWidget {
   Process {
     id: backlightProc
     onExited: function(exitCode) {
+      // A blink step: no read after it (the bulb already shows the target)
+      // and no error, since a keyboard falling asleep just misses one.
+      if (root.blinkSwitching) {
+        root.blinkSwitching = false
+        if (exitCode !== 0) root.pendingBacklight = ({})
+        root.stepBlinkRestore()
+        return
+      }
       if (exitCode !== 0) {
         root.pendingBacklight = ({})
         root.actionError = exitCode === 127 ? "solaar is not installed" : "Could not switch the backlight"
@@ -1246,6 +1363,15 @@ BarWidget {
     onTriggered: root.runTwilight()
   }
 
+  // Blink's loop: each step takes about a second (`solaar config` through
+  // the Solaar app), so the light changes every few seconds.
+  Timer {
+    interval: 3000
+    repeat: true
+    running: Object.keys(root.blinking).length > 0
+    onTriggered: root.blinkStep()
+  }
+
   Process {
     id: addonsProc
     command: ["/usr/bin/python3", root.addonsPath]
@@ -1253,6 +1379,11 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: root.applyAddons(text)
     }
+  }
+
+  Process {
+    id: addonToggleProc
+    onExited: root.scanAddons()
   }
 
   // Steppers write once the clicks stop; a write that never comes back

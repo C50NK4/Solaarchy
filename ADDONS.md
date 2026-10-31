@@ -1,10 +1,22 @@
 # Solaarchy add-ons
 
-Solaarchy stays small: battery, connections, the keyboard backlight and dark
-hours. Everything model-specific (haptics, lighting effects, button
-remapping) belongs in an **add-on**. An add-on is an ordinary Omarchy plugin
-that you install, update, enable and disable like any other, plus one file,
+Solaarchy stays small: battery, connections and the keyboard backlight.
+Everything model-specific (haptics, lighting effects, button remapping)
+belongs in an **add-on**. An add-on is an ordinary Omarchy plugin that you
+install, update, enable and disable like any other, plus one file,
 `solaarchy-addon.json`, next to its `manifest.json`.
+
+Solaarchy's Settings lists add-ons in three groups:
+
+- **Built-in add-ons** come with Solaarchy and switch on in Settings: Dark
+  hours (backlight by civil twilight) and Blink (just for fun). They use
+  Solaarchy's own code, not this API.
+- **Curated add-ons** have been reviewed for Solaarchy. They are listed even
+  before they're installed, with links to their repository and their
+  plugins.omarchy.org page, and shown greyed in the drawers they fit.
+- **Other add-ons:** every other installed plugin with a
+  `solaarchy-addon.json`. They show up by themselves and work the same way,
+  marked as not reviewed.
 
 An add-on can show up in two places, and may use both:
 
@@ -60,8 +72,9 @@ features into these categories:
 
 How a category shows in the drawer:
 
-- **Its own section** when something fills it: Solaarchy's built-in dark
-  hours, an add-on, or a known add-on still to come (shown greyed).
+- **Its own section** when something fills it: a built-in add-on (Lighting on
+  a backlit keyboard), an installed add-on, or a curated one not installed
+  yet (shown greyed).
 - **Otherwise one muted line:** "Also: Buttons · Easy-Switch". That line is
   the room an add-on can fill.
 
@@ -164,7 +177,9 @@ terminal, which is handy while testing.
   `~/.config/omarchy/plugins/*/solaarchy-addon.json` every time its panel
   opens. Run `/usr/bin/python3 solaarchy-addons.py` from Solaarchy's folder to
   see what it finds.
-- **Enabled state** comes from `omarchy-shell shell listPlugins`.
+- **Enabled state** comes from `omarchy-shell shell listPlugins`. The
+  add-on's switch in Solaarchy's Settings runs `omarchy plugin enable <id>` or
+  `omarchy plugin disable <id>`, so it is the same switch as Omarchy's.
 - **An installed but disabled add-on gets nothing loaded:** no QML and no
   panel button. The drawer only says that it is turned off.
 
@@ -174,8 +189,14 @@ Add-on QML runs inside the Omarchy shell process, just as every Omarchy plugin
 does. Solaarchy adds no new trust. It loads QML only from plugins that you
 installed and enabled.
 
-## Known add-ons
+## Curated add-ons
 
 | Category | Add-on | Status |
 |---|---|---|
 | `haptics` | Haptics for the MX Master 4 | In development as its own plugin. Shown greyed in the drawer until it ships. |
+
+To get yours listed, open an issue on
+[Solaarchy's repository](https://github.com/C50NK4/Solaarchy/issues) with its
+plugin id, its repository URL and, if it has one, its plugins.omarchy.org
+page. A curated entry reaches every Solaarchy user with their next plugin
+update.

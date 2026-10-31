@@ -15,7 +15,7 @@ Column {
   property bool customLocation: w.darkHoursLocation !== ""
   readonly property var twilight: w.twilight
   readonly property int offset: w.darkHoursOffset
-  // Any keyboard following dark hours, by the Settings switch or its own.
+  // Dark hours on, with a keyboard that follows it.
   readonly property bool active: w.darkKeyboards.length > 0
 
   width: parent ? parent.width : 0
@@ -174,7 +174,7 @@ Column {
       text: !page.twilight ? ""
         : (page.twilight.dark ? "Dark now" : "Light now")
           + (page.twilight.until ? ", until " + page.w.timeText(page.twilight.until) : "")
-          + (page.active ? "" : ". Nothing follows dark hours yet.")
+          + (page.active ? "" : !page.w.darkHours ? ". Dark hours is off." : ". Nothing follows dark hours yet.")
       color: page.view.dim
       font.family: page.view.fontFamily
       font.pixelSize: Style.font.caption
@@ -282,11 +282,11 @@ Column {
       var kbs = page.w.backlitKeyboards
       if (kbs.length === 0) return "No backlit keyboard yet. Dark hours start with the first one."
       var on = page.w.darkKeyboards.map(function(d) { return d.name })
-      var own = []
+      var skipped = []
       for (var i = 0; i < kbs.length; i++)
-        if (page.w.hasOwnDarkHours(kbs[i]) && own.indexOf(kbs[i].name) < 0) own.push(kbs[i].name)
+        if (page.w.darkSkipped(kbs[i]) && skipped.indexOf(kbs[i].name) < 0) skipped.push(kbs[i].name)
       return (on.length > 0 ? "Switches " + on.join(", ") + "." : "Switches no keyboard.")
-        + (own.length > 0 ? " Set on its own in its drawer: " + own.join(", ") + "." : "")
+        + (skipped.length > 0 ? " Skipped in its drawer: " + skipped.join(", ") + "." : "")
     }
     color: page.view.dim
     font.family: page.view.fontFamily

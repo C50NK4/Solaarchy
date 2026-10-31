@@ -478,7 +478,6 @@ Item {
     id: drawer
     property var device: null
     readonly property string deviceId: device ? String(device.id) : ""
-    readonly property bool ownDarkHours: !!device && content.w.hasOwnDarkHours(device)
     readonly property var layout: device ? content.w.drawerSections(device) : ({ "sections": [], "also": [] })
     width: parent ? parent.width : 0
     implicitHeight: drawerColumn.implicitHeight + Style.space(20)
@@ -508,25 +507,14 @@ Item {
           }
 
           OptionRow {
-            visible: section.modelData.builtin
+            visible: section.modelData.builtin && content.w.darkHours
             view: content.view
             glyph: "󰖔"
             label: "Dark hours"
-            caption: (drawer.ownDarkHours ? "Set for this keyboard" : "As in Settings")
-              + (drawer.device && content.w.darkHoursFor(drawer.device) && content.w.darkTimesText !== ""
-                 ? ": " + content.w.darkTimesText : "")
-
-            PanelActionButton {
-              visible: drawer.ownDarkHours
-              anchors.verticalCenter: parent.verticalCenter
-              iconText: "󰦛"
-              tooltipText: "Follow Settings again"
-              foreground: content.view.fg
-              fontFamily: content.view.fontFamily
-              hasCursor: content.view.hasCursorOn("dark-reset:" + drawer.deviceId)
-              onClicked: content.view.runAction("dark-reset:" + drawer.deviceId)
-              onHovered: function(h) { content.view.hoverAction("dark-reset:" + drawer.deviceId, h) }
-            }
+            caption: !drawer.device || !content.w.darkHoursFor(drawer.device) ? "Skipped for this keyboard"
+              : content.w.darkTimesText !== ""
+                ? content.w.darkTimesText.charAt(0).toUpperCase() + content.w.darkTimesText.slice(1)
+                : "On at dusk, off at dawn"
 
             ToggleSwitch {
               anchors.verticalCenter: parent.verticalCenter
@@ -547,6 +535,29 @@ Item {
               onClicked: content.view.runAction("dark-page")
               onHovered: function(h) { content.view.hoverAction("dark-page", h) }
             }
+          }
+
+          OptionRow {
+            visible: section.modelData.builtin && content.w.blink
+            view: content.view
+            glyph: "󰉁"
+            label: "Blink"
+            caption: (content.w.isBlinking(drawer.device) ? "Blinking. " : "Just for fun. ")
+              + "Drains the battery faster."
+
+            ToggleSwitch {
+              anchors.verticalCenter: parent.verticalCenter
+              checked: content.w.isBlinking(drawer.device)
+              foreground: content.view.fg
+              hasCursor: content.view.hasCursorOn("blink:" + drawer.deviceId)
+              onToggled: content.view.runAction("blink:" + drawer.deviceId)
+              onHovered: function(h) { content.view.hoverAction("blink:" + drawer.deviceId, h) }
+            }
+          }
+
+          MessageText {
+            visible: section.modelData.builtin && !content.w.darkHours && !content.w.blink
+            text: "Dark hours and Blink are built in, switched off in Settings."
           }
 
           Repeater {
@@ -574,8 +585,9 @@ Item {
             LabelButton {
               required property var modelData
               available: false
-              glyph: "󰕦"
-              text: modelData.label + " · in development"
+              glyph: modelData.icon
+              text: modelData.label + " add-on · " + (modelData.repo !== "" || modelData.page !== ""
+                ? "not installed" : "in development")
               tooltip: modelData.note
             }
           }

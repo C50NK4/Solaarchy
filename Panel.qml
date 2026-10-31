@@ -48,9 +48,19 @@ Panel {
       return picker
     }
     if (page === "settings") {
-      var settings = ["back", "dark-toggle", "dark-page", "notify-low", "low-minus", "low-plus",
+      var settings = ["back", "dark-toggle", "dark-page", "blink-toggle", "notify-low", "low-minus", "low-plus",
                       "notify-critical", "notify-connection", "hide-bar"]
-      if (w) for (var h = 0; h < w.hiddenDevices.length; h++) settings.push("unhide:" + w.hiddenDevices[h].id)
+      if (!w) return settings
+      for (var h = 0; h < w.hiddenDevices.length; h++) settings.push("unhide:" + w.hiddenDevices[h].id)
+      for (var c = 0; c < w.curatedAddons.length; c++) {
+        var curated = w.curatedAddons[c]
+        if (w.installedAddon(curated.id)) settings.push("addon-toggle:" + curated.id)
+        else {
+          if (curated.repo) settings.push("link:" + curated.repo)
+          if (curated.page) settings.push("link:" + curated.page)
+        }
+      }
+      for (var o = 0; o < w.otherAddons.length; o++) settings.push("addon-toggle:" + w.otherAddons[o].id)
       return settings
     }
     if (page === "darkhours")
@@ -65,8 +75,8 @@ Panel {
         var sections = w.drawerSections(d).sections
         for (var s = 0; s < sections.length; s++) {
           if (sections[s].builtin) {
-            if (w.hasOwnDarkHours(d)) list.push("dark-reset:" + d.id)
-            list.push("dark-own:" + d.id, "dark-page")
+            if (w.darkHours) list.push("dark-own:" + d.id, "dark-page")
+            if (w.blink) list.push("blink:" + d.id)
           }
           for (var a = 0; a < sections[s].addons.length; a++)
             if (sections[s].addons[a].panel) list.push("addon:" + sections[s].addons[a].id + ":" + d.id)
@@ -152,7 +162,7 @@ Panel {
     var colon = name.indexOf(":")
     var arg = colon >= 0 ? name.slice(colon + 1) : ""
     var verb = colon >= 0 ? name.slice(0, colon) : name
-    var device = arg !== "" && verb !== "icon" && verb !== "addon" ? deviceById(arg) : null
+    var device = arg !== "" && ["icon", "addon", "addon-toggle", "link"].indexOf(verb) < 0 ? deviceById(arg) : null
     if (verb === "icons") showPage("icons")
     else if (verb === "settings") showPage("settings")
     else if (verb === "back") goBack()
@@ -163,7 +173,13 @@ Panel {
     else if (verb === "backlight") { if (device && device.backlight) w.toggleBacklight(device) }
     else if (verb === "drawer") toggleDrawer(arg)
     else if (verb === "dark-own") { if (device) w.setDeviceDarkHours(device, !w.darkHoursFor(device)) }
-    else if (verb === "dark-reset") { if (device) w.setDeviceDarkHours(device, undefined) }
+    else if (verb === "blink") { if (device) w.setBlinking(device.id, !w.isBlinking(device)) }
+    else if (verb === "blink-toggle") w.saveSetting("blink", !w.blink)
+    else if (verb === "link") w.openLink(arg)
+    else if (verb === "addon-toggle") {
+      var addon = w.installedAddon(arg)
+      if (addon) w.setAddonEnabled(addon, !addon.enabled)
+    }
     else if (verb === "hide") {
       if (device) { drawerId = ""; w.setHidden(device, true) }
     }

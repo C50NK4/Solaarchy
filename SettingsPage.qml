@@ -27,7 +27,7 @@ Column {
     spacing: Style.space(10)
 
     PanelSectionHeader {
-      text: "DARK HOURS"
+      text: "BUILT-IN ADD-ONS"
       foreground: page.view.fg
       fontFamily: page.view.fontFamily
     }
@@ -35,7 +35,7 @@ Column {
     OptionRow {
       view: page.view
       glyph: "󰖔"
-      label: "Backlight at night"
+      label: "Dark hours"
       captionUrgent: page.w.twilightError !== ""
       caption: page.w.twilightError !== "" ? page.w.twilightError
         : page.w.backlitKeyboards.length === 0 ? "On at dusk, off at dawn. No backlit keyboard yet."
@@ -60,6 +60,22 @@ Column {
         hasCursor: page.view.hasCursorOn("dark-page")
         onClicked: page.view.showPage("darkhours")
         onHovered: function(h) { page.view.hoverAction("dark-page", h) }
+      }
+    }
+
+    OptionRow {
+      view: page.view
+      glyph: "󰉁"
+      label: "Blink"
+      caption: "Blinks a keyboard's light from its drawer, just for fun. Drains the battery."
+
+      ToggleSwitch {
+        anchors.verticalCenter: parent.verticalCenter
+        checked: page.w.blink
+        foreground: page.view.fg
+        hasCursor: page.view.hasCursorOn("blink-toggle")
+        onToggled: page.w.saveSetting("blink", !page.w.blink)
+        onHovered: function(h) { page.view.hoverAction("blink-toggle", h) }
       }
     }
   }
@@ -204,66 +220,128 @@ Column {
     }
   }
 
+  // Add-ons reviewed for Solaarchy: listed before they're installed, with
+  // their links; once installed, a switch like any other.
   Column {
     width: parent.width
     spacing: Style.space(10)
 
     PanelSectionHeader {
-      text: "ADD-ONS"
+      text: "CURATED ADD-ONS"
       foreground: page.view.fg
       fontFamily: page.view.fontFamily
     }
 
     Repeater {
-      model: page.w.addons
+      model: page.w.curatedAddons
 
       OptionRow {
+        id: curatedRow
+        required property var modelData
+        readonly property var installed: page.w.installedAddon(modelData.id)
+        // Greyed while there's nothing to install or open yet.
+        opacity: installed || modelData.repo !== "" || modelData.page !== "" ? 1.0 : 0.5
+        view: page.view
+        glyph: modelData.icon
+        label: modelData.label
+        caption: installed ? page.addonCaption(installed, true) : modelData.note
+
+        AddonSwitch {
+          visible: !!curatedRow.installed
+          addon: curatedRow.installed
+        }
+
+        PanelActionButton {
+          visible: !curatedRow.installed && curatedRow.modelData.repo !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          iconText: "󰊤"
+          tooltipText: "Repository"
+          foreground: page.view.fg
+          fontFamily: page.view.fontFamily
+          hasCursor: page.view.hasCursorOn("link:" + curatedRow.modelData.repo)
+          onClicked: page.view.runAction("link:" + curatedRow.modelData.repo)
+          onHovered: function(h) { page.view.hoverAction("link:" + curatedRow.modelData.repo, h) }
+        }
+
+        PanelActionButton {
+          visible: !curatedRow.installed && curatedRow.modelData.page !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          iconText: "󰖟"
+          tooltipText: "Plugin page"
+          foreground: page.view.fg
+          fontFamily: page.view.fontFamily
+          hasCursor: page.view.hasCursorOn("link:" + curatedRow.modelData.page)
+          onClicked: page.view.runAction("link:" + curatedRow.modelData.page)
+          onHovered: function(h) { page.view.hoverAction("link:" + curatedRow.modelData.page, h) }
+        }
+      }
+    }
+  }
+
+  // Everything else installed with a solaarchy-addon.json; shows up by itself.
+  Column {
+    visible: page.w.otherAddons.length > 0
+    width: parent.width
+    spacing: Style.space(10)
+
+    PanelSectionHeader {
+      text: "OTHER ADD-ONS"
+      foreground: page.view.fg
+      fontFamily: page.view.fontFamily
+    }
+
+    Repeater {
+      model: page.w.otherAddons
+
+      OptionRow {
+        id: otherRow
         required property var modelData
         view: page.view
         glyph: modelData.icon !== "" ? modelData.icon : "󰐱"
-        label: modelData.name
-        caption: page.w.categoryLabel(modelData.category)
-          + (modelData.enabled ? (modelData.panel ? " · opens from a device's drawer" : " · in a device's drawer")
-                               : " · turned off in Omarchy's plugins")
-      }
-    }
-
-    // Known add-ons that aren't installed yet.
-    Repeater {
-      model: page.w.knownAddons.filter(function(k) {
-        return !page.w.addons.some(function(a) { return a.category === k.category })
-      })
-
-      OptionRow {
-        required property var modelData
-        opacity: 0.5
-        view: page.view
-        glyph: "󰕦"
         label: modelData.label
-        caption: "In development"
+        caption: page.addonCaption(modelData, false)
+
+        AddonSwitch { addon: otherRow.modelData }
       }
     }
+  }
 
-    Text {
-      visible: page.w.addonErrors.length > 0
-      width: parent.width
-      textFormat: Text.PlainText
-      wrapMode: Text.Wrap
-      text: page.w.addonErrors.join("\n")
-      color: page.view.urgent
-      font.family: page.view.fontFamily
-      font.pixelSize: Style.font.caption
-    }
+  Text {
+    visible: page.w.addonErrors.length > 0
+    width: parent.width
+    textFormat: Text.PlainText
+    wrapMode: Text.Wrap
+    text: page.w.addonErrors.join("\n")
+    color: page.view.urgent
+    font.family: page.view.fontFamily
+    font.pixelSize: Style.font.caption
+  }
 
-    Text {
-      width: parent.width
-      textFormat: Text.PlainText
-      wrapMode: Text.Wrap
-      text: "An add-on is an Omarchy plugin with a solaarchy-addon.json next to its manifest. "
-        + "ADDONS.md in Solaarchy's repository shows how to write one."
-      color: page.view.dim
-      font.family: page.view.fontFamily
-      font.pixelSize: Style.font.caption
-    }
+  Text {
+    width: parent.width
+    textFormat: Text.PlainText
+    wrapMode: Text.Wrap
+    text: "An add-on is an Omarchy plugin with a solaarchy-addon.json next to its manifest; installed ones "
+      + "show up here by themselves. ADDONS.md in Solaarchy's repository shows how to write one and how "
+      + "to get it curated."
+    color: page.view.dim
+    font.family: page.view.fontFamily
+    font.pixelSize: Style.font.caption
+  }
+
+  function addonCaption(addon, curated) {
+    return page.w.categoryLabel(addon.category) + (curated ? "" : " · not reviewed")
+      + (addon.panel ? " · opens from a device's drawer" : " · in a device's drawer")
+  }
+
+  // Turns an installed add-on's plugin on or off in Omarchy.
+  component AddonSwitch: ToggleSwitch {
+    property var addon
+    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+    checked: !!addon && addon.enabled
+    foreground: page.view.fg
+    hasCursor: !!addon && page.view.hasCursorOn("addon-toggle:" + addon.id)
+    onToggled: page.view.runAction("addon-toggle:" + addon.id)
+    onHovered: function(h) { page.view.hoverAction("addon-toggle:" + addon.id, h) }
   }
 }
