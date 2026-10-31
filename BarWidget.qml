@@ -1271,6 +1271,10 @@ BarWidget {
       backlightProc.running = false
       root.pendingBacklight = ({})
       root.actionError = "Timed out switching the backlight"
+      // Whoever waits on the switch hears of it even if the kill reports no exit.
+      var done = root.backlightDone
+      root.backlightDone = null
+      if (done) done(false)
     }
   }
 

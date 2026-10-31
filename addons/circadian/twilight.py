@@ -22,6 +22,8 @@ never crosses -6 degrees today. "outsideDark"/"outsideUntil" are the same
 without the offset: what the sky does. "darkToday" lists today's dark spans
 as [start, end] local clock minutes, 0..1440, offset included, for drawing.
 "source" is "custom", "omarchy" or "timezone"; "place" names it.
+"omarchyName" is there when Omarchy's weather location is a name without
+coordinates (set without picking a suggestion), which can't be used offline.
 On failure: {"error": "..."}.
 
 --test runs the self-check.
@@ -157,16 +159,23 @@ def zone_location():
 
 
 def omarchy_location(path=WEATHER):
-    """(lat, lon, name) set for Omarchy's weather (omarchy-weather-location), or None."""
+    """(lat, lon, name) set for Omarchy's weather (omarchy-weather-location);
+    lat and lon None for a name alone; None when nothing is set."""
     try:
         with open(path) as f:
             doc = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    name = str(doc.get("name") or "")
+    try:
         lat, lon = float(doc["latitude"]), float(doc["longitude"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-        return None
-    return lat, lon, str(doc.get("name") or "")
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        return (None, None, name) if name else None
+    return lat, lon, name
 
 
 def parse_location(text):
@@ -185,7 +194,7 @@ def main(argv):
     omarchy = None if location else omarchy_location()
     if location:
         (lat, lon), source, place = parse_location(location), "custom", ""
-    elif omarchy:
+    elif omarchy and omarchy[0] is not None:
         lat, lon, place = omarchy
         source = "omarchy"
     else:
@@ -198,12 +207,15 @@ def main(argv):
     def local(t):
         return t.astimezone().strftime("%H:%M") if t else None
 
-    return {"dark": dark, "until": int(until.timestamp()) if until else None,
-            "dawn": local(today and today[0]), "dusk": local(today and today[1]),
-            "darkToday": dark_today(now, lat, lon, offset),
-            "outsideDark": outside_dark,
-            "outsideUntil": int(outside_until.timestamp()) if outside_until else None,
-            "lat": round(lat, 2), "lon": round(lon, 2), "source": source, "place": place}
+    doc = {"dark": dark, "until": int(until.timestamp()) if until else None,
+           "dawn": local(today and today[0]), "dusk": local(today and today[1]),
+           "darkToday": dark_today(now, lat, lon, offset),
+           "outsideDark": outside_dark,
+           "outsideUntil": int(outside_until.timestamp()) if outside_until else None,
+           "lat": round(lat, 2), "lon": round(lon, 2), "source": source, "place": place}
+    if omarchy and omarchy[0] is None:
+        doc["omarchyName"] = omarchy[2]
+    return doc
 
 
 def test():
@@ -261,6 +273,9 @@ def test():
         assert omarchy_location(path) == (47.07, 15.44, "Graz")
         with open(path, "w") as f:
             json.dump({"name": "Malibu"}, f)
+        assert omarchy_location(path) == (None, None, "Malibu")
+        with open(path, "w") as f:
+            json.dump({"name": "", "latitude": "x"}, f)
         assert omarchy_location(path) is None
     print("ok")
 

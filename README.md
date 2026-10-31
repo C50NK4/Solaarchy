@@ -171,8 +171,9 @@ outside and until when, and sets the timing and the location.
 - A keyboard's drawer can skip it: that keyboard keeps whatever light you
   give it while the rest follow.
 - Dusk and dawn are worked out locally, for the first of these that is set:
-  `circadianLocation`, then Omarchy's weather location
-  (`omarchy-weather-location --set <name> <lat,lon>`), then the reference city
+  `circadianLocation`, then Omarchy's weather location when it has
+  coordinates (pick one of the weather panel's suggestions, or run
+  `omarchy-weather-location --set <name> <lat,lon>`), then the reference city
   of your timezone (Vienna for `Europe/Vienna`). Dusk moves with latitude as
   well as longitude, so set a location if you live far from that city.
 - In polar night or white nights, when the sun stays below or above −6° all

@@ -113,7 +113,7 @@
       {
         "key": "hideWhenDisconnected",
         "type": "boolean",
-        "label": "Hide when no receiver",
+        "label": "Hide when no Logitech hardware is here",
         "description": "Hide the widget while no Logitech receiver is plugged in, no Logitech device is connected by cable or Bluetooth, and none is paired over Bluetooth. It reappears when one is plugged in or paired.",
         "defaultValue": true
       },

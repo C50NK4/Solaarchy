@@ -282,8 +282,11 @@ Column {
         if (t.source === "omarchy")
           return "Omarchy's weather location" + (t.place !== "" ? ", " + t.place : "") + ": " + t.lat + ", " + t.lon + "."
         var city = String(t.place).split("/").pop().replace(/_/g, " ")
-        return "Your timezone's city, " + city + ": " + t.lat + ", " + t.lon
-          + ". Set a location for Omarchy's weather, or Custom, if you live far from it."
+        var zone = city + ": " + t.lat + ", " + t.lon + "."
+        if (t.omarchyName)
+          return "Omarchy's weather location, " + t.omarchyName + ", is a name without coordinates; "
+            + "pick it from the weather panel's suggestions to use it here. Until then, your timezone's city, " + zone
+        return "Your timezone's city, " + zone + " Set a location for Omarchy's weather, or Custom, if you live far from it."
       }
       color: page.view.dim
       font.family: page.view.fontFamily

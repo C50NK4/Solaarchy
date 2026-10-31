@@ -207,8 +207,8 @@ Column {
     OptionRow {
       view: page.view
       glyph: "󰈉"
-      label: "Hide when no receiver"
-      caption: "Nor any Logitech device on cable or Bluetooth. Back as soon as one is here"
+      label: "Auto-hide"
+      caption: "While no receiver is plugged in and no Logitech device is connected or paired over Bluetooth"
 
       ToggleSwitch {
         anchors.verticalCenter: parent.verticalCenter
