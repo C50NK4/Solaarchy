@@ -5,7 +5,7 @@ Every connected Logitech device at a glance, in the
 ones are awake, and the keyboard backlight — one click away, without opening an
 app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
 
-<img src="screenshots/panel.png" alt="Solaarchy panel with a keyboard and a mouse, MX Master 4 charging" width="396">
+<img src="screenshots/tour.gif" alt="A tour of the Solaarchy panel: the devices, a keyboard's drawer, the Circadian page, the bar icon picker, Settings, and the auto bar icon switching to the mouse while the keyboard sleeps" width="361">
 
 - Battery level, charging state and a charge bar for each device
 - Live updates: a device that switches off or goes to sleep shows as **Asleep**
@@ -23,6 +23,8 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   [add-ons](addons/ADDONS.md)
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
+- An **auto** bar icon that shows the keyboard, the mouse, or both, whichever
+  are on
 - The widget hides itself while no receiver is plugged in and no Logitech
   device is connected or paired over Bluetooth (optional)
 - Last readings survive shell restarts
@@ -35,23 +37,42 @@ Logitech or the Solaar project.
 <table>
   <tr>
     <td align="center" valign="top">
-      <img src="screenshots/bar-tooltip.png" alt="Tooltip on the bar icon listing each device's battery and the backlight state" width="357"><br>
-      <sub>Hover the bar icon for every battery level at a glance</sub>
+      <img src="screenshots/panel.png" alt="The devices: a keyboard with its backlight bulb, and a charging MX Master 4" width="344"><br>
+      <sub>Every device's battery, charging, and the keyboard's bulb</sub>
     </td>
     <td align="center" valign="top">
-      <img src="screenshots/panel-backlight-hint.png" alt="Backlight bulb next to the keyboard name with its hint" width="387"><br>
-      <sub>The bulb next to a keyboard switches its backlight</sub>
+      <img src="screenshots/bar-tooltip.png" alt="Tooltip on the bar icon listing each device's battery and the backlight state" width="300"><br>
+      <sub>Hover the bar icon for every battery level at a glance</sub>
     </td>
   </tr>
   <tr>
     <td align="center" valign="top">
-      <img src="screenshots/panel-asleep.png" alt="A sleeping keyboard keeps its last reading, with the keyboard and mouse bar icon" width="393"><br>
-      <sub>A sleeping keyboard keeps its last reading; bar icon: keyboard + mouse</sub>
+      <img src="screenshots/drawer.png" alt="A keyboard's drawer: the Lighting section with Circadian, other capabilities, and Hide this device" width="344"><br>
+      <sub>Each device has a drawer: Circadian for the keyboard, and room for add-ons</sub>
     </td>
     <td align="center" valign="top">
-      <img src="screenshots/icon-picker.png" alt="The bar icon picker: the Solaar icon, the device icons, and a YOUR OWN row holding two user-supplied SVGs and the + button" width="272"><br>
-      <sub>Customise the bar icon: Solaar's own, a device icon, or any SVG you
-      add yourself with <b>+</b></sub>
+      <img src="screenshots/circadian.png" alt="The Circadian page: today as a 24-hour strip, the timing and the location" width="344"><br>
+      <sub>Circadian: today as a strip, the timing, and where you are</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-backlight-hint.png" alt="The bulb's tooltip with the backlight state and Circadian's times" width="344"><br>
+      <sub>The bulb switches the backlight; its tooltip has Circadian's times</sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/panel-asleep.png" alt="A sleeping keyboard keeps its last reading, and the auto bar icon shows only the mouse" width="361"><br>
+      <sub>A sleeping keyboard keeps its last reading; the auto icon shows the mouse that's awake</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <img src="screenshots/icon-picker.png" alt="The bar icon picker: Solaar's icon, auto and the device icons, and two SVGs of the user's own" width="344"><br>
+      <sub>The bar icon: Solaar's own, auto, a device icon, or any SVG you add with <b>+</b></sub>
+    </td>
+    <td align="center" valign="top">
+      <img src="screenshots/settings.png" alt="Settings: built-in add-ons, notifications, the bar, and curated add-ons" width="344"><br>
+      <sub>Settings: built-in add-ons, notifications, the bar, curated add-ons</sub>
     </td>
   </tr>
 </table>
