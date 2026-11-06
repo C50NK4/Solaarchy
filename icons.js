@@ -2,9 +2,9 @@
 
 // Bar icons for Solaarchy. Each icon is one SVG path, normalised to a height
 // of 100 and filled even-odd in a single theme colour. `barScale` is its
-// height in the bar as a share of the icon canvas; device icons derive it from
-// one shared scale so filled and outline pairs, and all devices, keep equal
-// stroke weights. Sources and licences: THIRD_PARTY.md.
+// height relative to the others; device icons share one scale so a filled and
+// an outline pair, and every device, keep the same stroke weight. The bar
+// paints at `barHeight`. Sources and licences: THIRD_PARTY.md.
 //
 // Solaarchy ships no vendor logos of its own. Anyone who wants one points the
 // plugin at an SVG file they supply themselves; those become records of the
@@ -113,6 +113,29 @@ function deviceRow(variant) {
 // for a missing icon/barScale) and rounded to a whole pixel.
 function scaledHeight(icon, base) {
   return Math.round(base * ((icon && icon.barScale) || 1))
+}
+
+// Height to paint a bar icon at. Omarchy scales whatever a bar button is
+// handed as its icon component so the longest side equals `iconSize`. A
+// square mark, and the mouse (taller than it is wide), already land on
+// iconSize. A wide one does not: combo is nearly twice as wide as it is
+// tall, so that fit leaves it about half height, and a wordmark the same.
+// The bar paints the mark itself and only gives the shell an empty square
+// (see BarWidget).
+//
+// Device icons share a stroke weight, so they stay in proportion to barScale
+// with the mouse exactly iconSize tall. Every other icon is iconSize tall
+// and as wide as its aspect, which is what the shell already draws when the
+// mark is not wider than it is tall.
+function barHeight(icon, iconSize) {
+  var size = Math.round(iconSize)
+  if (!icon || !(size > 0)) return size > 0 ? size : 0
+  if (icon.group === "device") {
+    var mouse = byId("mouse")
+    var ref = (mouse && mouse.barScale) || 1
+    return scaledHeight(icon, size / ref)
+  }
+  return size
 }
 
 // The height that keeps a wide icon (combo, keyboard, logi...) at most as

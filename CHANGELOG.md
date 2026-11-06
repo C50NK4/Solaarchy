@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Wide bar icons are full height again. On Omarchy 4.5 the shell scales a bar
+  icon's component until its longest side fits the icon size, so the keyboard
+  + mouse mark and a wide SVG of your own came out about half as tall. The
+  mark is drawn on the button itself now: the mouse stays at the bar's icon
+  size, and a wider icon keeps that height.
+
 ## 1.1.0
 
 - **Circadian**, a built-in add-on: every backlit keyboard can switch on at

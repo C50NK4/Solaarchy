@@ -1361,13 +1361,27 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
 
-    readonly property real markHeight: Icons.scaledHeight(root.currentIcon, Style.bar.iconCanvas)
-    readonly property real markWidth: markHeight * root.currentIcon.width / root.currentIcon.height
+    // Painted size. The shell would scale an iconComponent down until its
+    // longest side is iconSize, which is what makes a wide mark about half
+    // height; Icons.barHeight is the height to draw instead. On a vertical
+    // bar the slot only grows along the bar, so a wordmark wider than the
+    // bar itself shrinks until it sits inside the thickness.
+    readonly property real naturalHeight: Icons.barHeight(root.currentIcon, Style.bar.iconSize)
+    readonly property real naturalWidth: naturalHeight * root.currentIcon.width / root.currentIcon.height
+    readonly property real markWidth: {
+      var across = root.bar && root.bar.vertical ? root.bar.barSize : 0
+      return across > 0 ? Math.min(naturalWidth, across) : naturalWidth
+    }
+    readonly property real markHeight: naturalWidth > 0
+      ? naturalHeight * markWidth / naturalWidth : naturalHeight
 
-    // Wordmarks are wider than a glyph slot; widen the slot instead of
-    // letting them spill over the neighbouring widgets.
+    // Wider than a glyph slot: grow the slot instead of spilling onto the
+    // neighbouring widgets.
     slotSize: Math.max(Style.bar.iconSlot, markWidth + Style.space(10))
-    iconComponent: markComponent
+    // Keeps the button an icon. A clear square of exactly iconSize is what
+    // the shell's fit already targets, so it has nothing to rescale, and the
+    // mark below is what actually shows.
+    iconComponent: markPlaceholder
     foreground: root.anyLow ? root.urgent : (root.bar ? root.bar.barForeground : Color.foreground)
     dimmed: !root.loaded
     tooltipText: root.barTooltip
@@ -1377,21 +1391,26 @@ BarWidget {
       else root.toggle()
     }
 
-    // The wrapper Item takes the Loader's forced square size so the mark
-    // keeps its own width.
+    IconMark {
+      anchors.centerIn: parent
+      iconId: root.currentIcon.id
+      iconData: root.currentIcon.custom ? root.currentIcon : null
+      height: iconButton.markHeight
+      // The shell only press-scales the icon it owns. This mark is not
+      // inside it, so it takes the same scale itself.
+      scale: iconButton.pressScale
+      // No colour animation, like the stock glyph icons: the bar already
+      // animates its foreground, and bars that recolour widgets with a
+      // shader match against that foreground exactly.
+      color: iconButton.foreground
+    }
+
     Component {
-      id: markComponent
-      Item {
-        IconMark {
-          anchors.centerIn: parent
-          iconId: root.currentIcon.id
-          iconData: root.currentIcon.custom ? root.currentIcon : null
-          height: iconButton.markHeight
-          // No colour animation, like the stock glyph icons: the bar already
-          // animates its foreground, and bars that recolour widgets with a
-          // shader match against that foreground exactly.
-          color: iconButton.foreground
-        }
+      id: markPlaceholder
+      Rectangle {
+        width: Style.bar.iconSize
+        height: Style.bar.iconSize
+        color: "transparent"
       }
     }
   }
