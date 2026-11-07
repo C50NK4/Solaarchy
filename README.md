@@ -22,7 +22,7 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   yourself, each with its own switch in Settings
 - **Circadian**, the first built-in add-on: every backlit keyboard lights up at
   civil dusk and goes dark at civil dawn, worked out offline for where you are
-- **LED**, a built-in add-on for mice with LED effects: a master switch on the
+- **LED Effects**, a built-in add-on for mice with LED effects: a master switch on the
   row, one effect cycler for all zones, and a hue slider
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
@@ -171,7 +171,7 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see [Circadian](#circadian) |
 | `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
 | `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
-| `led`                  | `true`   | Built-in add-on: a mouse's LED effects and colour, see [LED](#led) |
+| `led`                  | `true`   | Built-in add-on: a mouse's LED effects and colour, see [LED Effects](#led-effects) |
 | `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `circadian` (`false` skips), `hidden` |
 
 Connected and disconnected notifications wait 5 minutes because Solaarchy
@@ -237,7 +237,7 @@ panel of its own. Settings lists them in three groups, each add-on with its own
 switch. [The list of add-ons](addons/README.md) has what's available:
 
 - **Built in:** they come with Solaarchy, each in its own folder under
-  `addons/`. [Circadian](#circadian) and [LED](#led) are on by default.
+  `addons/`. [Circadian](#circadian) and [LED Effects](#led-effects) are on by default.
 - **Curated:** reviewed for Solaarchy, and listed with links to their
   repository and plugins.omarchy.org page even before you install them.
   Haptics for the MX Master 4 is the first, still in development.
@@ -281,7 +281,7 @@ omarchy bar set io.github.c50nk4.solaarchy circadianOffset 30 --json
 omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
 ```
 
-### LED
+### LED Effects
 
 A mouse with LED effects (Logitech G mice such as the G403, and the RGB-effect
 family) gets a bulb on its row and controls in its drawer:
@@ -363,7 +363,7 @@ Solaarchy does:
 - **Changing things:** the backlight when you toggle it, and with Circadian
   on (the default) once at dusk and once at dawn; both run
   `solaar config <device> backlight …`, under the same lock as the reads. The
-  LED add-on's controls run `solaar config` the same way, and only when you use
+  LED Effects controls run `solaar config` the same way, and only when you use
   them. `addons/circadian/twilight.py` works
   out those times offline, from your settings, Omarchy's weather location or
   your timezone. Changing a setting in the panel, or picking a bar icon, runs

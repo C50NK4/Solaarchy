@@ -266,7 +266,7 @@ Item {
                                       "circadian.loc-omarchy", "circadian.loc-custom"]
 
   // Asked only while it is on, for the keyboard whose drawer is open.
-  function drawerActions(device) { return ["circadian.follow:" + device.id, "addon-page:circadian"] }
+  function drawerActions(device) { return ["addon-page:circadian", "circadian.follow:" + device.id] }
 
   // The page listens: Custom puts the keys into the location field.
   signal locationModeRequested(bool custom)

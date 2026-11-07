@@ -54,8 +54,8 @@ Panel {
       var settings = ["back"]
       if (!w) return settings
       for (var b = 0; b < w.builtins.length; b++) {
-        settings.push("addon-on:" + w.builtins[b].id)
         if (w.builtins[b].page !== "") settings.push("addon-page:" + w.builtins[b].id)
+        settings.push("addon-on:" + w.builtins[b].id)
       }
       settings.push("notify-more")
       if (notificationsOpen)

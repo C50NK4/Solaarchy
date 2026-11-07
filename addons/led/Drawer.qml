@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../.."
 
-// LED in a mouse's drawer: one cycler that moves every zone to the same next
+// LED Effects in a mouse's drawer: one cycler that moves every zone to the same next
 // effect (Primary and Logo stay in lock-step), and a hue slider for the
 // effects that carry a color (Static, Breathe). The master switch is the row
 // bulb on the device's row; the drawer stays open while it is off, and a
@@ -32,7 +32,7 @@ Column {
     id: row
     view: host.view
     glyph: "󰛨"
-    label: "LED"
+    label: "LED Effects"
     // The service's message (a failed write) is urgent; otherwise the last
     // read: the linked effect while control is on, the state while off.
     caption: service && service.message !== "" ? service.message

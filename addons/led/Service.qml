@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell.Io
 
-// LED, a built-in add-on: the LED control of every paired Logitech mouse —
+// LED Effects, a built-in add-on: the LED control of every paired Logitech mouse —
 // the master switch, one cycler that moves all zones to the same next effect
 // so they stay in lock-step, and a hue slider for the effects that carry a
 // color. Every write goes through `solaar config`, one at a time; every read

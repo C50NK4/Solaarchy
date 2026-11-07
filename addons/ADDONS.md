@@ -11,7 +11,7 @@ add-ons in three groups:
 
 - **Built-in add-ons** come with Solaarchy, one folder each next to this
   file, and switch on and off in Settings: Circadian (the keyboard light by
-  civil twilight, on by default), LED (a mouse's lights: a master switch, one
+  civil twilight, on by default), LED Effects (a mouse's lights: a master switch, one
   cycler for all its zones and a hue slider, on by default). See [Built-in add-ons](#built-in-add-ons).
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
@@ -75,7 +75,7 @@ features into these categories:
 How a category shows in the drawer:
 
 - **Its own section** when something fills it: a built-in add-on (Lighting:
-  Circadian on a backlit keyboard, LED on a mouse), an installed add-on, or a
+  Circadian on a backlit keyboard, LED Effects on a mouse), an installed add-on, or a
   curated one not installed yet (shown greyed).
 - **Otherwise one muted line:** "Also: Buttons · Easy-Switch". That line is
   the room an add-on can fill.
@@ -198,7 +198,7 @@ Built-in add-ons ship inside Solaarchy, one folder each next to this file:
 | Folder | Add-on | Parts |
 |---|---|---|
 | `circadian/` | Circadian: the keyboard light on at dusk, off at dawn | service, page, drawer, `twilight.py` |
-| `led/` | LED: a mouse's light — a master switch, one cycler for all zones, a hue slider | service, drawer, `led-state.py` |
+| `led/` | LED Effects: a mouse's light — a master switch, one cycler for all zones, a hue slider | service, drawer, `led-state.py` |
 
 Each has the same `solaarchy-addon.json`, with these keys on top:
 

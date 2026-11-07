@@ -30,15 +30,7 @@ OptionRow {
     : service.timesText !== "" ? "Light " + service.timesText
     : "Light on at dusk, off at dawn"
 
-  ToggleSwitch {
-    anchors.verticalCenter: parent.verticalCenter
-    checked: row.follows
-    foreground: row.host.foreground
-    hasCursor: row.host.view.hasCursorOn(row.followAction)
-    onToggled: row.host.view.runAction(row.followAction)
-    onHovered: function(h) { row.host.view.hoverAction(row.followAction, h) }
-  }
-
+  // The more button first, so the switch lines up with every other one.
   PanelActionButton {
     anchors.verticalCenter: parent.verticalCenter
     iconText: "󰅂"
@@ -48,5 +40,14 @@ OptionRow {
     hasCursor: row.host.view.hasCursorOn("addon-page:circadian")
     onClicked: row.host.view.runAction("addon-page:circadian")
     onHovered: function(h) { row.host.view.hoverAction("addon-page:circadian", h) }
+  }
+
+  ToggleSwitch {
+    anchors.verticalCenter: parent.verticalCenter
+    checked: row.follows
+    foreground: row.host.foreground
+    hasCursor: row.host.view.hasCursorOn(row.followAction)
+    onToggled: row.host.view.runAction(row.followAction)
+    onHovered: function(h) { row.host.view.hoverAction(row.followAction, h) }
   }
 }

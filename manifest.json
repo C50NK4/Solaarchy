@@ -144,8 +144,8 @@
       {
         "key": "led",
         "type": "boolean",
-        "label": "LED",
-        "description": "Built-in add-on, on by default: a mouse's LED control — a master switch, one cycler that moves every zone to the same next effect, and a hue slider for the effects that carry a color. A mouse's drawer in the panel has the controls.",
+        "label": "LED Effects",
+        "description": "Built-in add-on, on by default: effect and colour of a device's LEDs, all zones at once. A device's drawer in the panel has the controls.",
         "defaultValue": true
       }
     ]

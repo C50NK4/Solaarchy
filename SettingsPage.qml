@@ -49,15 +49,7 @@ Column {
         captionUrgent: !!service && service.captionUrgent === true
         caption: service && service.caption ? service.caption : modelData.description
 
-        ToggleSwitch {
-          anchors.verticalCenter: parent.verticalCenter
-          checked: page.w.addonOn(builtinRow.modelData)
-          foreground: page.view.fg
-          hasCursor: page.view.hasCursorOn(builtinRow.onAction)
-          onToggled: page.view.runAction(builtinRow.onAction)
-          onHovered: function(h) { page.view.hoverAction(builtinRow.onAction, h) }
-        }
-
+        // The more button first, so every switch lines up at the right edge.
         PanelActionButton {
           visible: builtinRow.modelData.page !== ""
           anchors.verticalCenter: parent.verticalCenter
@@ -68,6 +60,15 @@ Column {
           hasCursor: page.view.hasCursorOn(builtinRow.pageAction)
           onClicked: page.view.runAction(builtinRow.pageAction)
           onHovered: function(h) { page.view.hoverAction(builtinRow.pageAction, h) }
+        }
+
+        ToggleSwitch {
+          anchors.verticalCenter: parent.verticalCenter
+          checked: page.w.addonOn(builtinRow.modelData)
+          foreground: page.view.fg
+          hasCursor: page.view.hasCursorOn(builtinRow.onAction)
+          onToggled: page.view.runAction(builtinRow.onAction)
+          onHovered: function(h) { page.view.hoverAction(builtinRow.onAction, h) }
         }
       }
     }

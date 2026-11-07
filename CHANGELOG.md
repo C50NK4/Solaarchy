@@ -2,7 +2,7 @@
 
 ## 1.1.1
 
-- **LED**, a built-in add-on: a mouse with per-zone LED effects (Logitech G
+- **LED Effects**, a built-in add-on: a mouse with per-zone LED effects (Logitech G
   mice such as the G403, and the RGB-effect family) gets them: a master
   switch for LED control on its row, in the same place as the keyboard
   backlight switch, and in its drawer one cycler that moves every zone to
@@ -33,7 +33,9 @@
   size, and a wider icon keeps that height.
 - The backlight switch now takes the same lock as every other device access,
   so it can't pick up another Solaar process's reply.
-- Rainbow LED, the mock-up, is gone: the LED add-on is the real thing.
+- Rainbow LED, the mock-up, is gone: LED Effects is the real thing.
+- In Settings the switches line up in one column, with the more button before
+  the switch.
 - DEVICES.md and addons/README.md list the devices and add-ons people use; add
   yours with a pull request.
 
