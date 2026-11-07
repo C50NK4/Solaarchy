@@ -31,8 +31,9 @@
   + mouse mark and a wide SVG of your own came out about half as tall. The
   mark is drawn on the button itself now: the mouse stays at the bar's icon
   size, and a wider icon keeps that height.
-- The backlight switch now takes the same lock as every other device access,
-  so it can't pick up another Solaar process's reply.
+- The backlight switch now takes the same lock as Solaarchy's device reads, so
+  the two can't pick up each other's replies. It also gives up by itself if
+  Solaar hangs.
 - Rainbow LED, the mock-up, is gone: LED Effects is the real thing.
 - In Settings the switches line up in one column, with the more button before
   the switch.

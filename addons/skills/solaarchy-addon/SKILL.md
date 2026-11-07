@@ -27,7 +27,7 @@ Read it before writing code; this skill is the workflow around it.
 - Every device access goes through Solaar and takes Solaarchy's lock:
 
   ```sh
-  flock "$XDG_RUNTIME_DIR/solaarchy-status.lock" solaar config "$selector" <setting> <value>
+  flock -w 10 "$XDG_RUNTIME_DIR/solaarchy-status.lock" timeout 15 solaar config "$selector" <setting> <value>
   ```
 
   No raw HID++ writes and no udev rule of its own. Only touch features the
@@ -115,7 +115,7 @@ Column {
   // Solaarchy's lock around every device access.
   Process {
     id: write
-    command: ["flock", root.host.lockPath, "solaar", "config", root.device.selector, "<setting>", "<value>"]
+    command: ["flock", "-w", "10", root.host.lockPath, "timeout", "15", "solaar", "config", root.device.selector, "<setting>", "<value>"]
     onExited: function(code) { if (code === 0) root.host.refresh() }
   }
 }

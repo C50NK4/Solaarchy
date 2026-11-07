@@ -168,8 +168,10 @@ terminal, which is handy while testing.
   HID++ software id, so two programs talking to one device at once can pick up
   each other's replies.
   ```sh
-  flock "$XDG_RUNTIME_DIR/solaarchy-status.lock" solaar config "$selector" haptic-level 60
+  flock -w 10 "$XDG_RUNTIME_DIR/solaarchy-status.lock" timeout 15 solaar config "$selector" haptic-level 60
   ```
+  Keep both limits: without `timeout`, a `solaar` that hangs keeps the lock and
+  every read waits on it, even after `flock` itself is killed.
 - **Stay inside what the device lists.** Only probe features that Solaar names
   and that appear in `device.features`.
 
@@ -239,7 +241,7 @@ Solaarchy asks a service for these, when it has them:
 | `message` | An urgent line under the devices, while it is not empty |
 | `tooltipFor(device)` | A line in a keyboard bulb's tooltip |
 | `fits(device)` | Whether its drawer row shows on a device, instead of the feature match |
-| `rowBulb(device)` | A bulb for the device's row, in the backlight bulb's space: an object with `on`, `busy`, `enabled`, `tooltip`, `action`, or null |
+| `rowBulb(device)` | A bulb for the device's row, in the backlight bulb's space, on a device without a backlight: an object with `on`, `enabled`, `tooltip`, `action`, or null |
 | `setOn(on)` | Its switch in Settings, instead of a plain `saveSetting` |
 | `pageActions` | Keyboard-cursor actions on its page, after "back" |
 | `drawerActions(device)` | Keyboard-cursor actions of its drawer row |

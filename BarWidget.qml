@@ -520,8 +520,9 @@ BarWidget {
       // Disabled while lit), so the light it had before it left goes back.
       // Not on the first read: those rows come from the state file.
       // ponytail: old.backlight is the last read (up to one poll old), and
-      // a first read back without a backlight reading skips the restore;
-      // the light still goes dark for ~3 s, as Solaar's own push comes first.
+      // only the first read back can arm this: one without a backlight
+      // reading, or one that beats Solaar's push, skips the restore. The
+      // light still goes dark for ~3 s, as Solaar's own push comes first.
       if (loaded && old && !old.online && d.online && old.backlight && d.backlight
           && !!old.backlight.enabled !== !!d.backlight.enabled)
         backlightRestore[String(d.id)] = old.backlight.enabled ? 1 : 0
@@ -622,15 +623,21 @@ BarWidget {
   }
 
   // One switch at a time; the read after it comes back here for the next.
-  // Every entry is dropped once looked at, so a hidden keyboard's can't linger.
+  // An entry waits while its keyboard is online but not read in full yet;
+  // otherwise it is dropped once looked at, so a hidden one's can't linger.
   function restoreBacklight() {
     if (backlightProc.running) return
     for (var id in backlightRestore) {
       var target = backlightRestore[id]
-      delete backlightRestore[id]
       var d = null
-      for (var i = 0; i < shown.length; i++)
-        if (String(shown[i].id) === id && isLive(shown[i])) d = shown[i]
+      var waiting = false
+      for (var i = 0; i < shown.length; i++) {
+        if (String(shown[i].id) !== id) continue
+        if (isLive(shown[i])) d = shown[i]
+        else if (shown[i].online) waiting = true
+      }
+      if (waiting && !d) continue
+      delete backlightRestore[id]
       if (d && d.backlight && backlightOn(d) !== (target === 1)) {
         setBacklight(d, target)
         return
@@ -807,6 +814,14 @@ BarWidget {
   // node reports the same unit id, but its Solaar serial is empty, so the
   // serial only hits the asleep receiver slot and the CLI reports that no
   // online device matched. The codename (our name) matches the direct node.
+  // A device write under the lock every device access takes. -w: a read can
+  // hold it for about as long as a write's timeout, so fail before that.
+  // timeout: killing flock leaves its child holding the lock, so a solaar that
+  // hangs has to end by itself or every later read and write waits on it.
+  function locked(command) {
+    return ["flock", "-w", "10", lockPath, "timeout", "15"].concat(command)
+  }
+
   function solaarDeviceArg(device) {
     if (!device.receiver && device.name) return String(device.name)
     return String(device.id)
@@ -834,10 +849,8 @@ BarWidget {
     // finds no choice and `solaar config` crashes (seen with Solaar 1.1.20).
     // sh -c exec: a missing binary is sh exiting 127, never a failed start
     // inside the shell process.
-    // flock: the lock every device access takes. -w: a read can hold it for
-    // about as long as this switch's timeout, so fail before that.
-    backlightProc.command = ["flock", "-w", "10", lockPath, "/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
-      solaarDeviceArg(device), "backlight", target === 1 ? "lowest" : "highest"]
+    backlightProc.command = locked(["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+      solaarDeviceArg(device), "backlight", target === 1 ? "lowest" : "highest"])
     backlightProc.running = true
   }
 
@@ -964,9 +977,9 @@ BarWidget {
 
   // A built-in add-on's bulb for a device's row, in the name-trailing space
   // the keyboard backlight bulb uses: the LED control switch on a mouse.
-  // null for a device with no row bulb.
+  // null for a device with no row bulb. A backlight bulb keeps that space.
   function rowBulbFor(device) {
-    if (!device) return null
+    if (!device || device.backlight) return null
     for (var i = 0; i < builtins.length; i++) {
       var service = services[builtins[i].id]
       var bulb = service && typeof service.rowBulb === "function" ? service.rowBulb(device) : null

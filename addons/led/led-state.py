@@ -5,8 +5,7 @@ HID++ devices as JSON.
 Read-only: it goes through Solaar's own library (python-solaar, official repos)
 and the hidraw access Solaar's udev rule already grants. No device setting is
 changed and Solaar's configuration file is never written; LED changes go through
-`solaar config` so the running Solaar GUI records them and does not undo them
-when the keyboard wakes.
+`solaar config`, which hands them to a running Solaar GUI.
 
 With --ids ID,ID,... (device ids as the core status script prints them), the
 "led" reading of every online device whose id is in that list is included; an
@@ -103,7 +102,7 @@ except Exception as e:  # Solaar missing or incompatible
 _solaar_config.save = lambda *args, **kwargs: None
 _solaar_config.do_save = lambda *args, **kwargs: None
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 from solaarchy_common import consistent as _consistent
 from solaarchy_common import device_id as _device_id
 from solaarchy_common import forget_features as _forget_features

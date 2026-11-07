@@ -4,8 +4,7 @@
 Read-only: it goes through Solaar's own library (python-solaar, official repos)
 and the hidraw access Solaar's udev rule already grants. No device setting is
 changed and Solaar's configuration file is never written; backlight changes go
-through `solaar config` so the running Solaar GUI records them and does not
-undo them when the keyboard wakes.
+through `solaar config`, which hands them to a running Solaar GUI.
 
 Output: {"receivers": [...], "devices": [...], "listed": [...], "warnings": [...],
 "bluetooth": N}, or {"error": "..."} when nothing at all could be read. "listed"

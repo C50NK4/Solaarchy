@@ -25,8 +25,8 @@ Item {
   // dawn to dusk) it was last switched or found right for, saved so a
   // restart doesn't redo it. Per span, not just on/off: a dawn it never saw
   // live (asleep, on another Easy-Switch host) must not make it skip the
-  // next dusk. failed: ids whose switch failed, left until the next twilight
-  // check; switching: a write is out.
+  // next dusk. failed: ids whose switch failed, left until the next dusk, dawn
+  // or midnight; switching: a write is out.
   property var applied: ({})
   property var failed: ({})
   property bool switching: false
@@ -51,8 +51,9 @@ Item {
   function span() { return { "dark": twilight.dark, "until": twilight.until || 0 } }
   function done(id) {
     var a = applied[id]
-    return !!a && typeof a === "object" && a.dark === twilight.dark
-      && Math.abs((a.until || 0) - (twilight.until || 0)) < 43200
+    if (!a || typeof a !== "object" || a.dark !== twilight.dark) return false
+    // No end known (polar day or night) is the same span while dark matches.
+    return !a.until || !twilight.until || Math.abs(a.until - twilight.until) < 43200
   }
 
   function forget(list) {
@@ -85,6 +86,8 @@ Item {
       if (host.backlightOn(d) === twilight.dark) {
         applied[id] = span()
         settled = true
+        // Already right for this span: a restore must not undo that.
+        delete host.backlightRestore[id]
         continue
       }
       switchKeyboard(d, twilight.dark)
@@ -93,7 +96,7 @@ Item {
     if (settled) save()
   }
 
-  // A failed switch waits for the next twilight check, not the next read,
+  // A failed switch waits for the next dusk, dawn or midnight, not the next read,
   // which would loop on a keyboard that keeps refusing.
   function switchKeyboard(device, on) {
     var id = String(device.id)
@@ -150,7 +153,6 @@ Item {
     error = doc.error ? String(doc.error) : ""
     answer = doc.error ? null : doc
     answerDay = answer ? today() : ""
-    failed = ({})
     advance()
   }
 
@@ -165,6 +167,7 @@ Item {
   }
 
   function advance() {
+    failed = ({})
     var now = Date.now()
     if (answer) {
       var s = stateAt(answer.changes, answer.dark, now / 1000)

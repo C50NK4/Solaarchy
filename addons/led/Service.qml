@@ -28,12 +28,9 @@ Item {
   property var pendingEffect: ({})
   // "id:zone location" -> color while a zone color write is in flight.
   property var pendingColor: ({})
-  // Shown in the devices page's message row, like circadian's error. Clears
-  // on the next core read, like the core's own error.
+  // Shown in the devices page's message row, like circadian's error, for a
+  // moment (see the timer below): the next write may be much later.
   property string message: ""
-  // led-state.py reads Solaar's saved settings, and a zone's effect is often
-  // only saved once it has been set.
-  readonly property string noStateHint: "Set an effect in Solaar once to control it here"
 
   readonly property bool busy: writeProc.running
   readonly property bool reading: readProc.running
@@ -87,6 +84,19 @@ Item {
   function hasZones(id) {
     var led = service.ledFor(id)
     return !!led && service.isList(led.zones) && led.zones.length > 0
+  }
+
+  // And the device said which effects it can do.
+  function canCycle(id) {
+    return service.hasZones(id) && service.isList(service.ledFor(id).zones[0].effects)
+  }
+
+  // Nothing to show yet. led-state.py reads Solaar's saved settings, and a
+  // zone's effect is often only saved once it has been set; an offline device
+  // or a read under way just hasn't answered.
+  function noStateText(online) {
+    return online && !service.reading ? "Set an effect in Solaar once to control it here"
+      : "No LED state read yet"
   }
 
   function controlOn(id) {
@@ -239,10 +249,9 @@ Item {
     var busy = service.busyFor(id)
     return {
       "on": on,
-      "busy": busy,
       "enabled": !!device.online && !!service.ledFor(id) && !busy,
       "tooltip": busy ? "Switching LED control…"
-        : !service.ledFor(id) ? service.noStateHint
+        : !service.ledFor(id) ? service.noStateText(!!device.online)
         // Off hands the LEDs back to the firmware, which may keep them lit.
         : on ? "LED control on: click to give the LEDs back to the mouse"
         : "LED control off, the mouse's own lighting: click to turn on",
@@ -289,8 +298,7 @@ Item {
     for (var i = 0; i < doc.devices.length; i++) {
       var d = doc.devices[i]
       if (!d || d.led === undefined) continue
-      // null (offline, or not asked for this time) keeps the last good
-      // answer.
+      // null (offline, or a read that clashed) keeps the last good answer.
       if (d.led) next[String(d.id)] = d.led
       service.confirmLed(String(d.id), d.led)
     }
@@ -363,7 +371,7 @@ Item {
     // controlSetting comes from the read JSON; it is "rgb_control" on the
     // newer RGB_EFFECTS mice (G502/G700/G900 family), "led_control" on the
     // G403-style COLOR_LED_EFFECTS ones.
-    writeProc.command = service.locked(["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+    writeProc.command = host.locked(["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
       service.solaarArg(device), led.controlSetting || "led_control",
       target === 1 ? "true" : "false"])
     writeProc.running = true
@@ -440,7 +448,7 @@ Item {
     service.message = ""
     // The chain is the shell command itself (the args are quoted above),
     // not positional parameters as in the single-setting calls.
-    writeProc.command = service.locked(["/bin/sh", "-c", cmds.join(" && ")])
+    writeProc.command = host.locked(["/bin/sh", "-c", cmds.join(" && ")])
     writeProc.running = true
   }
 
@@ -489,15 +497,8 @@ Item {
     service.pendingColor = pending
     service.pendingControl = pendingCtl
     service.message = ""
-    writeProc.command = service.locked(["/bin/sh", "-c", cmds.join(" && ")])
+    writeProc.command = host.locked(["/bin/sh", "-c", cmds.join(" && ")])
     writeProc.running = true
-  }
-
-  // Under the core's lock, like every device access. A read can hold it for
-  // about as long as the write's own timeout, so give up waiting well before
-  // that: flock then exits 1, and the write fails instead of timing out.
-  function locked(command) {
-    return ["flock", "-w", "10", host.lockPath].concat(command)
   }
 
   // Single-quote for the chained `sh -c` command: the device arg is a name
@@ -584,16 +585,19 @@ Item {
     }
   }
 
+  Timer {
+    interval: 15000
+    running: service.message !== ""
+    onTriggered: service.message = ""
+  }
+
   Component.onCompleted: service.read()
 
   // The core's read is the moment a device's feature list turns up or a
   // device comes back: re-read the LED state then.
   Connections {
     target: host
-    function onStatusApplied() {
-      service.message = ""
-      service.read()
-    }
+    function onStatusApplied() { service.read() }
   }
 
   onOnChanged: service.read()

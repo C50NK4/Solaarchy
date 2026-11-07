@@ -306,7 +306,7 @@ Item {
                   id: ledBulb
                   readonly property real freeStart: nameText.width
                   readonly property real freeEnd: parent.width + deviceItem.labelsGap
-                  visible: deviceItem.rowBulb !== null && !bulb.visible
+                  visible: deviceItem.rowBulb !== null
                   x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
                   anchors.verticalCenter: parent.verticalCenter
                   fontSize: Style.font.body

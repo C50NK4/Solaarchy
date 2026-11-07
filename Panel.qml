@@ -83,7 +83,7 @@ Panel {
         var d = w.shown[j]
         if (d.backlight) list.push("backlight:" + d.id)
         var rb = w.rowBulbFor(d)
-        if (rb && !d.backlight) list.push(rb.action)  // as the row: the backlight bulb wins
+        if (rb) list.push(rb.action)
         list.push("drawer:" + d.id)
         if (String(d.id) !== drawerId) continue
         var sections = w.drawerSections(d).sections
