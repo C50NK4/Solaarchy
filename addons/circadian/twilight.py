@@ -21,6 +21,9 @@ included; "dusk"/"dawn" are today's local switch times, null when the sun
 never crosses -6 degrees today. "outsideDark"/"outsideUntil" are the same
 without the offset: what the sky does. "darkToday" lists today's dark spans
 as [start, end] local clock minutes, 0..1440, offset included, for drawing.
+"changes"/"outsideChanges" list the switches ahead as [unix time, dark
+after], two days or more, so the caller can follow dusk and dawn without
+asking again until the next local day.
 "source" is "custom", "omarchy" or "timezone"; "place" names it.
 "omarchyName" is there when Omarchy's weather location is a name without
 coordinates (set without picking a suggestion), which can't be used offline.
@@ -109,6 +112,15 @@ def schedule(now, lat, lon, offset):
         if a > now:
             return True, a, today
     return True, None, today
+
+
+def changes(now, lat, lon, offset):
+    """The switches after now as [unix time, dark after], in order."""
+    merged, _ = light_spans(now, lat, lon, offset)
+    out = []
+    for a, b in merged:
+        out += [[int(a.timestamp()), False], [int(b.timestamp()), True]]
+    return [c for c in out if c[0] > now.timestamp()]
 
 
 def dark_today(now, lat, lon, offset):
@@ -210,7 +222,9 @@ def main(argv):
     doc = {"dark": dark, "until": int(until.timestamp()) if until else None,
            "dawn": local(today and today[0]), "dusk": local(today and today[1]),
            "darkToday": dark_today(now, lat, lon, offset),
+           "changes": changes(now, lat, lon, offset),
            "outsideDark": outside_dark,
+           "outsideChanges": changes(now, lat, lon, 0),
            "outsideUntil": int(outside_until.timestamp()) if outside_until else None,
            "lat": round(lat, 2), "lon": round(lon, 2), "source": source, "place": place}
     if omarchy and omarchy[0] is None:
@@ -250,6 +264,11 @@ def test():
     # 00:30 local is still 23:30 UTC the day before: today is the local day.
     _, _, (dawn, _) = schedule(datetime(2026, 10, 31, 23, 30, tzinfo=timezone.utc), *vienna, 0)
     assert dawn.astimezone().date() == date(2026, 11, 1), dawn
+    # The switches ahead start at the next change and alternate.
+    ahead = changes(noon, *vienna, 30)
+    assert ahead[0] == [int(schedule(noon, *vienna, 30)[1].timestamp()), True], ahead[:2]
+    assert len(ahead) >= 4 and all(ahead[i][1] != ahead[i + 1][1] for i in range(len(ahead) - 1)), ahead
+    assert ahead[3][0] - noon.timestamp() > 86400, ahead  # covers more than a day
     # The strip: dark from midnight to dawn and from dusk to midnight, in clock minutes.
     spans = dark_today(noon, *vienna, 0)
     _, _, (dawn, dusk) = schedule(noon, *vienna, 0)

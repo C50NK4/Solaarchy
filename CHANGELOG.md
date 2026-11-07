@@ -7,6 +7,13 @@
   reconnect, and that saved value can be stale: an MX Keys Mini lit by
   Solaarchy came back dark. Solaarchy now puts back the light it had before
   its link dropped.
+- Circadian no longer skips nights. It remembered only "switched on" or
+  "switched off", so a keyboard that missed one dawn (asleep, or on another
+  host while it was light) counted every following dusk as already done and
+  stayed dark. It now remembers which dusk or dawn it switched for.
+- Circadian works out dusk and dawn once a day, just after midnight, instead
+  of every 10 minutes. It still switches on time: the helper now lists the
+  switches for the days ahead.
 
 ## 1.1.0
 
