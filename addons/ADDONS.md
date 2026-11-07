@@ -6,7 +6,8 @@ belongs in an **add-on**. An add-on is an ordinary Omarchy plugin that you
 install, update, enable and disable like any other, plus one file,
 `solaarchy-addon.json`, next to its `manifest.json`.
 
-Solaarchy's Settings lists add-ons in three groups:
+[README.md](README.md) lists the add-ons that exist. Solaarchy's Settings lists
+add-ons in three groups:
 
 - **Built-in add-ons** come with Solaarchy, one folder each next to this
   file, and switch on and off in Settings: Circadian (the keyboard light by
@@ -238,7 +239,7 @@ Solaarchy asks a service for these, when it has them:
 | `message` | An urgent line under the devices, while it is not empty |
 | `tooltipFor(device)` | A line in a keyboard bulb's tooltip |
 | `fits(device)` | Whether its drawer row shows on a device, instead of the feature match |
-| `rowBulb(device)` | A bulb for the device's row, in the backlight bulb's space: an object with `on`, `busy`, `online`, `action`, or null |
+| `rowBulb(device)` | A bulb for the device's row, in the backlight bulb's space: an object with `on`, `busy`, `enabled`, `tooltip`, `action`, or null |
 | `setOn(on)` | Its switch in Settings, instead of a plain `saveSetting` |
 | `pageActions` | Keyboard-cursor actions on its page, after "back" |
 | `drawerActions(device)` | Keyboard-cursor actions of its drawer row |

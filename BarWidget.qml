@@ -834,7 +834,9 @@ BarWidget {
     // finds no choice and `solaar config` crashes (seen with Solaar 1.1.20).
     // sh -c exec: a missing binary is sh exiting 127, never a failed start
     // inside the shell process.
-    backlightProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+    // flock: the lock every device access takes. -w: a read can hold it for
+    // about as long as this switch's timeout, so fail before that.
+    backlightProc.command = ["flock", "-w", "10", lockPath, "/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
       solaarDeviceArg(device), "backlight", target === 1 ? "lowest" : "highest"]
     backlightProc.running = true
   }

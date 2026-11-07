@@ -209,8 +209,6 @@ Item {
           // and share the same free space.
           readonly property var rowBulb: content.w.rowBulbFor(modelData)
           readonly property bool rowBulbOn: rowBulb ? rowBulb.on : false
-          readonly property bool rowBulbBusy: rowBulb ? rowBulb.busy : false
-          readonly property bool rowBulbOnline: rowBulb ? rowBulb.online : false
           readonly property string rowBulbAction: rowBulb ? rowBulb.action : ""
           readonly property var activeBulb: bulb.visible ? bulb : (ledBulb.visible ? ledBulb : null)
           readonly property real labelsGap: Style.space(8)
@@ -308,7 +306,7 @@ Item {
                   id: ledBulb
                   readonly property real freeStart: nameText.width
                   readonly property real freeEnd: parent.width + deviceItem.labelsGap
-                  visible: deviceItem.rowBulb !== null
+                  visible: deviceItem.rowBulb !== null && !bulb.visible
                   x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
                   anchors.verticalCenter: parent.verticalCenter
                   fontSize: Style.font.body
@@ -316,12 +314,9 @@ Item {
                   foreground: deviceItem.rowBulbOn ? content.view.fg : content.view.dim
                   hoverColor: content.view.fg
                   fontFamily: content.view.fontFamily
-                  enabled: deviceItem.rowBulbOnline && !deviceItem.rowBulbBusy
+                  enabled: deviceItem.rowBulb ? deviceItem.rowBulb.enabled : false
                   hasCursor: content.view.hasCursorOn(deviceItem.rowBulbAction)
-                  tooltipText: deviceItem.rowBulbBusy
-                    ? "Switching LED control…"
-                    : "LED control " + (deviceItem.rowBulbOn ? "on" : "off")
-                      + ": click to turn " + (deviceItem.rowBulbOn ? "off" : "on")
+                  tooltipText: deviceItem.rowBulb ? deviceItem.rowBulb.tooltip : ""
                   onClicked: content.view.runAction(deviceItem.rowBulbAction)
                   onHovered: function(h) { content.view.hoverAction(deviceItem.rowBulbAction, h) }
                 }

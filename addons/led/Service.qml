@@ -28,8 +28,12 @@ Item {
   property var pendingEffect: ({})
   // "id:zone location" -> color while a zone color write is in flight.
   property var pendingColor: ({})
-  // Shown in the devices page's message row, like circadian's error.
+  // Shown in the devices page's message row, like circadian's error. Clears
+  // on the next core read, like the core's own error.
   property string message: ""
+  // led-state.py reads Solaar's saved settings, and a zone's effect is often
+  // only saved once it has been set.
+  readonly property string noStateHint: "Set an effect in Solaar once to control it here"
 
   readonly property bool busy: writeProc.running
   readonly property bool reading: readProc.running
@@ -77,6 +81,12 @@ Item {
     for (var i = 0; i < zone.effects.length; i++)
       if (zone.effects[i].id === effectId) return zone.effects[i]
     return null
+  }
+
+  // There is a saved effect to cycle from.
+  function hasZones(id) {
+    var led = service.ledFor(id)
+    return !!led && service.isList(led.zones) && led.zones.length > 0
   }
 
   function controlOn(id) {
@@ -225,10 +235,17 @@ Item {
     if (!device || !service.on) return null
     if (!service.hasLedFeature(device)) return null
     var id = String(device.id)
+    var on = service.controlOn(id)
+    var busy = service.busyFor(id)
     return {
-      "on": service.controlOn(id),
-      "busy": service.busyFor(id),
-      "online": !!device.online,
+      "on": on,
+      "busy": busy,
+      "enabled": !!device.online && !!service.ledFor(id) && !busy,
+      "tooltip": busy ? "Switching LED control…"
+        : !service.ledFor(id) ? service.noStateHint
+        // Off hands the LEDs back to the firmware, which may keep them lit.
+        : on ? "LED control on: click to give the LEDs back to the mouse"
+        : "LED control off, the mouse's own lighting: click to turn on",
       "action": "led.control:" + id
     }
   }
@@ -322,10 +339,10 @@ Item {
   }
 
   // Force-settle every pending LED state, no read involved: the belt for a
-  // write that never confirms. Guarded so a belt that fires while a newer
-  // write is in flight can't clear that write's optimistic state.
+  // write that never confirms. Not guarded on busy: inside writeProc's
+  // onExited the binding still says running, so a guard here would skip the
+  // settle of a failed write. The settle timer checks for a newer write itself.
   function settleLed() {
-    if (service.busy) return
     service.pendingControl = ({})
     service.pendingEffect = ({})
     service.pendingColor = ({})
@@ -346,9 +363,9 @@ Item {
     // controlSetting comes from the read JSON; it is "rgb_control" on the
     // newer RGB_EFFECTS mice (G502/G700/G900 family), "led_control" on the
     // G403-style COLOR_LED_EFFECTS ones.
-    writeProc.command = ["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
+    writeProc.command = service.locked(["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
       service.solaarArg(device), led.controlSetting || "led_control",
-      target === 1 ? "true" : "false"]
+      target === 1 ? "true" : "false"])
     writeProc.running = true
   }
 
@@ -372,7 +389,11 @@ Item {
     var ref = zones[0]
     if (!service.isList(ref.effects) || ref.effects.length === 0) return
     var order = []
-    for (var i = 0; i < ref.effects.length; i++) order.push(ref.effects[i].id)
+    // Nameless: an effect Solaar's table doesn't know, which `solaar config`
+    // can't write, so it would stop the cycler right there.
+    for (var i = 0; i < ref.effects.length; i++)
+      if (ref.effects[i].name) order.push(ref.effects[i].id)
+    if (order.length === 0) return
     // Pending-aware: the label already shows the in-flight effect, so the
     // next step must start where the user sees the cycler, or the list
     // stops at the last entry instead of wrapping (the Breathe bug).
@@ -419,7 +440,7 @@ Item {
     service.message = ""
     // The chain is the shell command itself (the args are quoted above),
     // not positional parameters as in the single-setting calls.
-    writeProc.command = ["/bin/sh", "-c", cmds.join(" && ")]
+    writeProc.command = service.locked(["/bin/sh", "-c", cmds.join(" && ")])
     writeProc.running = true
   }
 
@@ -468,8 +489,15 @@ Item {
     service.pendingColor = pending
     service.pendingControl = pendingCtl
     service.message = ""
-    writeProc.command = ["/bin/sh", "-c", cmds.join(" && ")]
+    writeProc.command = service.locked(["/bin/sh", "-c", cmds.join(" && ")])
     writeProc.running = true
+  }
+
+  // Under the core's lock, like every device access. A read can hold it for
+  // about as long as the write's own timeout, so give up waiting well before
+  // that: flock then exits 1, and the write fails instead of timing out.
+  function locked(command) {
+    return ["flock", "-w", "10", host.lockPath].concat(command)
   }
 
   // Single-quote for the chained `sh -c` command: the device arg is a name
@@ -521,9 +549,7 @@ Item {
     running: writeProc.running
     onTriggered: {
       writeProc.running = false
-      service.pendingControl = ({})
-      service.pendingEffect = ({})
-      service.pendingColor = ({})
+      service.settleLed()
       service.message = "Timed out changing the LED settings"
     }
   }
@@ -564,7 +590,10 @@ Item {
   // device comes back: re-read the LED state then.
   Connections {
     target: host
-    function onStatusApplied() { service.read() }
+    function onStatusApplied() {
+      service.message = ""
+      service.read()
+    }
   }
 
   onOnChanged: service.read()

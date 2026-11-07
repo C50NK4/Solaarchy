@@ -36,7 +36,8 @@ Column {
     // The service's message (a failed write) is urgent; otherwise the last
     // read: the linked effect while control is on, the state while off.
     caption: service && service.message !== "" ? service.message
-      : !service || !service.ledFor(id) ? "No LED state read yet"
+      : !service || (!online || service.reading) && !service.hasZones(id) ? "No LED state read yet"
+      : !service.hasZones(id) ? service.noStateHint
       : service.controlOn(id) ? "Effect: " + (service.linkedEffect(id) || "—")
       : "Control off"
     captionUrgent: service && service.message !== ""
@@ -51,7 +52,7 @@ Column {
       foreground: host.foreground
       hoverColor: host.foreground
       fontFamily: host.fontFamily
-      enabled: online && !drawer.busy
+      enabled: online && !drawer.busy && !!service && service.hasZones(id)
       hasCursor: host.view.hasCursorOn("led.effect:" + id)
       tooltipText: drawer.busy
         ? "Changing the LED effect…"
