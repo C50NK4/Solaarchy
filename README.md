@@ -22,6 +22,8 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   yourself, each with its own switch in Settings
 - **Circadian**, the first built-in add-on: every backlit keyboard lights up at
   civil dusk and goes dark at civil dawn, worked out offline for where you are
+- **LED**, a built-in add-on for mice with LED effects: a master switch on the
+  row, one effect cycler for all zones, and a hue slider
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
 - An **auto** bar icon that shows the keyboard, the mouse, or both, whichever
@@ -52,7 +54,7 @@ Logitech or the Solaar project.
       <sub>Each device has a drawer: Circadian for the keyboard, and room for add-ons</sub>
     </td>
     <td align="center" valign="top">
-      <img src="screenshots/circadian.png" alt="The Circadian page: today as a 24-hour strip, the timing and the location" width="344"><br>
+      <img src="screenshots/addons/circadian.png" alt="The Circadian page: today as a 24-hour strip, the timing and the location" width="344"><br>
       <sub>Circadian: today as a strip, the timing, and where you are</sub>
     </td>
   </tr>
@@ -169,7 +171,7 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see [Circadian](#circadian) |
 | `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
 | `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
-| `rainbowMockup`        | `false`  | Built-in experimental add-on: a greyed colour mock-up in lit devices' drawers. Changes nothing |
+| `led`                  | `true`   | Built-in add-on: a mouse's LED effects and colour, see [LED](#led) |
 | `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `circadian` (`false` skips), `hidden` |
 
 Connected and disconnected notifications wait 5 minutes because Solaarchy
@@ -232,11 +234,10 @@ Notes:
 Solaarchy itself stays small: battery, connections and the keyboard backlight.
 Everything else is an add-on, with its controls in a device's drawer or in a
 panel of its own. Settings lists them in three groups, each add-on with its own
-switch:
+switch. [The list of add-ons](addons/README.md) has what's available:
 
 - **Built in:** they come with Solaarchy, each in its own folder under
-  `addons/`. [Circadian](#circadian) is on by default. Rainbow LED, an
-  experimental greyed mock-up that changes nothing, is off.
+  `addons/`. [Circadian](#circadian) and [LED](#led) are on by default.
 - **Curated:** reviewed for Solaarchy, and listed with links to their
   repository and plugins.omarchy.org page even before you install them.
   Haptics for the MX Master 4 is the first, still in development.
@@ -280,6 +281,20 @@ omarchy bar set io.github.c50nk4.solaarchy circadianOffset 30 --json
 omarchy bar set io.github.c50nk4.solaarchy circadianLocation "47.07, 15.44"
 ```
 
+### LED
+
+A mouse with LED effects (Logitech G mice such as the G403, and the RGB-effect
+family) gets a bulb on its row and controls in its drawer:
+
+- **The bulb** switches LED control. Off gives the LEDs back to the mouse's own
+  firmware, which may keep them lit.
+- **The cycler** moves every zone to the same next effect, so they stay in step.
+- **The hue slider** shows for the effects that carry a colour.
+
+Changing an effect or colour while control is off turns it back on. The state
+comes from Solaar's saved settings, so if the drawer says to, set an effect in
+Solaar once. Tested on a G403 HERO; the RGB-effect family is untested on hardware.
+
 ### Write your own
 
 An add-on is an ordinary Omarchy plugin with one extra file,
@@ -306,7 +321,8 @@ Developed and used daily with:
 - **MX Keys Mini for Business** (battery + backlight)
 - **MX Master 4** (battery)
 
-Beyond that, anything Solaar can see:
+[DEVICES.md](DEVICES.md) lists what others have run it with; add yours with a
+pull request. Beyond that, anything Solaar can see:
 
 - Bolt, Unifying, Nano, Lightspeed and 27 MHz receivers, with every device
   paired to them
@@ -346,7 +362,9 @@ Solaarchy does:
   the widget stays while a Bluetooth keyboard sleeps.
 - **Changing things:** the backlight when you toggle it, and with Circadian
   on (the default) once at dusk and once at dawn; both run
-  `solaar config <device> backlight …`. `addons/circadian/twilight.py` works
+  `solaar config <device> backlight …`, under the same lock as the reads. The
+  LED add-on's controls run `solaar config` the same way, and only when you use
+  them. `addons/circadian/twilight.py` works
   out those times offline, from your settings, Omarchy's weather location or
   your timezone. Changing a setting in the panel, or picking a bar icon, runs
   `omarchy bar set …`. Opening Solaar runs `uwsm-app -- solaar`.
