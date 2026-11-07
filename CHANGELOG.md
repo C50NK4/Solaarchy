@@ -14,6 +14,11 @@
 - Circadian works out dusk and dawn once a day, just after midnight, instead
   of every 10 minutes. It still switches on time: the helper now lists the
   switches for the days ahead.
+- Wide bar icons are full height again. On Omarchy 4.5 the shell scales a bar
+  icon's component until its longest side fits the icon size, so the keyboard
+  + mouse mark and a wide SVG of your own came out about half as tall. The
+  mark is drawn on the button itself now: the mouse stays at the bar's icon
+  size, and a wider icon keeps that height.
 
 ## 1.1.0
 
