@@ -2,6 +2,20 @@
 
 ## 1.1.0
 
+- **LED**, a built-in add-on: a mouse with per-zone LED effects (Logitech G
+  mice such as the G403, and the RGB-effect family) gets them: a master
+  switch for LED control on its row, in the same place as the keyboard
+  backlight switch, and in its drawer one cycler that moves every zone to
+  the same next effect the firmware advertises (Disabled, Static, Cycle,
+  Breathe, …), so the zones stay in lock-step, and a hue slider for the
+  effects that carry a color (Static, Breathe). The drawer stays open while
+  the switch is off, and a change made there turns it back on. Cycling sends
+  the effect with its defaults plus any param the current effect still sets,
+  so a custom Cycle period survives a trip away and back, and an effect's
+  color falls back to white instead of the black Solaar's own dialog would
+  leave. On by default; Settings switches it off.
+- The switches write through `solaar config`, so the running Solaar GUI
+  records the change and re-applies it when the device wakes.
 - **Circadian**, a built-in add-on: every backlit keyboard can switch on at
   civil dusk and off at civil dawn, so it lights up when you sit down before
   sunrise even after you turned it off during the day. It has its own page
@@ -11,6 +25,7 @@
   keyboard's drawer can skip it. On by default; Settings switches it off.
 - **A drawer per device**, behind a chevron at the end of its row:
   - Circadian for that keyboard (follow or skip)
+  - LED for that mouse (control, effect and hue)
   - Hide this device
   - the device's capabilities, read once from its HID++ feature list and
     grouped as Lighting, Haptics, Buttons, Pointer & scroll, Keyboard and
@@ -27,7 +42,7 @@
   own controls into a device's drawer, or open its own panel for that device.
   Settings lists the built-in ones, curated ones (with links, even before
   they're installed) and any other installed ones, each with its own switch.
-  Built-in add-ons live in `addons/`: Circadian, and Rainbow LED, an
+  Built-in add-ons live in `addons/`: Circadian, LED, and Rainbow LED, an
   experimental mock-up that is off by default. See addons/ADDONS.md, and
   addons/skills/solaarchy-addon, a Claude Code skill for writing one. Haptics
   for the MX Master 4 is the first curated add-on, in development.

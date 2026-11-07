@@ -1,0 +1,12 @@
+{
+  "api": 1,
+  "category": "lighting",
+  "features": ["COLOR_LED_EFFECTS", "RGB_EFFECTS"],
+  "label": "LED",
+  "icon": "󰛨",
+  "description": "The LED control of a Logitech mouse: a master switch on the device row, one effect cycler for all zones, and a hue slider.",
+  "setting": "led",
+  "default": true,
+  "service": "Service.qml",
+  "drawer": "Drawer.qml"
+}

@@ -10,8 +10,9 @@ Solaarchy's Settings lists add-ons in three groups:
 
 - **Built-in add-ons** come with Solaarchy, one folder each next to this
   file, and switch on and off in Settings: Circadian (the keyboard light by
-  civil twilight, on by default) and Rainbow LED (an experimental mock-up,
-  off by default). See [Built-in add-ons](#built-in-add-ons).
+  civil twilight, on by default), LED (a mouse's lights: a master switch, one
+  cycler for all its zones and a hue slider, on by default) and Rainbow LED
+  (an experimental mock-up, off by default). See [Built-in add-ons](#built-in-add-ons).
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
   plugins.omarchy.org page, and shown greyed in the drawers they fit.
@@ -73,9 +74,9 @@ features into these categories:
 
 How a category shows in the drawer:
 
-- **Its own section** when something fills it: a built-in add-on (Lighting on
-  a backlit keyboard), an installed add-on, or a curated one not installed
-  yet (shown greyed).
+- **Its own section** when something fills it: a built-in add-on (Lighting:
+  Circadian on a backlit keyboard, LED on a mouse), an installed add-on, or a
+  curated one not installed yet (shown greyed).
 - **Otherwise one muted line:** "Also: Buttons · Easy-Switch". That line is
   the room an add-on can fill.
 
@@ -200,6 +201,7 @@ Built-in add-ons ship inside Solaarchy, one folder each next to this file:
 | Folder | Add-on | Parts |
 |---|---|---|
 | `circadian/` | Circadian: the keyboard light on at dusk, off at dawn | service, page, drawer, `twilight.py` |
+| `led/` | LED: a mouse's light — a master switch, one cycler for all zones, a hue slider | service, drawer, `led-state.py` |
 | `rainbow/` | Rainbow LED: a greyed mock-up, off by default | drawer only, through the API above |
 
 Each has the same `solaarchy-addon.json`, with these keys on top:
@@ -242,6 +244,7 @@ Solaarchy asks a service for these, when it has them:
 | `message` | An urgent line under the devices, while it is not empty |
 | `tooltipFor(device)` | A line in a keyboard bulb's tooltip |
 | `fits(device)` | Whether its drawer row shows on a device, instead of the feature match |
+| `rowBulb(device)` | A bulb for the device's row, in the backlight bulb's space: an object with `on`, `busy`, `online`, `action`, or null |
 | `setOn(on)` | Its switch in Settings, instead of a plain `saveSetting` |
 | `pageActions` | Keyboard-cursor actions on its page, after "back" |
 | `drawerActions(device)` | Keyboard-cursor actions of its drawer row |

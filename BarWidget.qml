@@ -849,7 +849,7 @@ BarWidget {
   // Built in: the folders under addons/, each with a solaarchy-addon.json
   // like any add-on's, plus its on/off key in Solaarchy's own settings (see
   // addons/ADDONS.md). Read once at start, listed in this order.
-  readonly property var builtinIds: ["circadian", "rainbow"]
+  readonly property var builtinIds: ["circadian", "led", "rainbow"]
   property var builtins: []
   // Built-in add-on id -> its service: the part that runs for as long as the
   // widget does.
@@ -923,6 +923,19 @@ BarWidget {
       if (line) lines.push(line)
     }
     return lines.join("\n")
+  }
+
+  // A built-in add-on's bulb for a device's row, in the name-trailing space
+  // the keyboard backlight bulb uses: the LED control switch on a mouse.
+  // null for a device with no row bulb.
+  function rowBulbFor(device) {
+    if (!device) return null
+    for (var i = 0; i < builtins.length; i++) {
+      var service = services[builtins[i].id]
+      var bulb = service && typeof service.rowBulb === "function" ? service.rowBulb(device) : null
+      if (bulb) return bulb
+    }
+    return null
   }
 
   // Curated: add-ons reviewed for Solaarchy, listed (and shown greyed where

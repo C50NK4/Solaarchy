@@ -204,6 +204,15 @@ Item {
           readonly property real fraction: modelData.battery ? Math.max(0, Math.min(1, modelData.battery.level / 100)) : 0
           readonly property bool hasBacklight: !!modelData.backlight
           readonly property bool lightOn: content.w.backlightOn(modelData)
+          // The light switch at the end of the name: the keyboard backlight on
+          // keyboards, the LED control on mice. The two never show at once
+          // and share the same free space.
+          readonly property var rowBulb: content.w.rowBulbFor(modelData)
+          readonly property bool rowBulbOn: rowBulb ? rowBulb.on : false
+          readonly property bool rowBulbBusy: rowBulb ? rowBulb.busy : false
+          readonly property bool rowBulbOnline: rowBulb ? rowBulb.online : false
+          readonly property string rowBulbAction: rowBulb ? rowBulb.action : ""
+          readonly property var activeBulb: bulb.visible ? bulb : (ledBulb.visible ? ledBulb : null)
           readonly property real labelsGap: Style.space(8)
           readonly property string drawerAction: "drawer:" + modelData.id
           readonly property bool drawerOpen: content.view.drawerId === String(modelData.id)
@@ -245,16 +254,17 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(1)
 
-              // Name, with the backlight switch in the space after it on keyboards.
+              // Name, with the light switch in the space after it: the
+              // backlight on keyboards, the LED control on mice.
               Item {
                 width: parent.width
-                implicitHeight: Math.max(nameText.implicitHeight, bulb.visible ? bulb.implicitHeight : 0)
+                implicitHeight: Math.max(nameText.implicitHeight, deviceItem.activeBulb ? deviceItem.activeBulb.implicitHeight : 0)
 
                 Text {
                   id: nameText
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Math.min(implicitWidth, parent.width - (bulb.visible ? bulb.width + Style.space(8) : 0))
+                  width: Math.min(implicitWidth, parent.width - (deviceItem.activeBulb ? deviceItem.activeBulb.width + Style.space(8) : 0))
                   textFormat: Text.PlainText
                   text: deviceItem.modelData.name
                   color: content.view.fg
@@ -288,6 +298,32 @@ Item {
                          ? "\n" + content.w.addonTooltip(deviceItem.modelData) : "")
                   onClicked: content.w.toggleBacklight(deviceItem.modelData)
                   onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
+                }
+
+                // The LED control switch on a mouse's row: the same bulb and
+                // the same free space as the backlight one, the two never
+                // both showing. The row keeps the chevron either way, so the
+                // drawer stays reachable while the switch is off.
+                PanelActionButton {
+                  id: ledBulb
+                  readonly property real freeStart: nameText.width
+                  readonly property real freeEnd: parent.width + deviceItem.labelsGap
+                  visible: deviceItem.rowBulb !== null
+                  x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
+                  anchors.verticalCenter: parent.verticalCenter
+                  fontSize: Style.font.body
+                  iconText: deviceItem.rowBulbOn ? "󰛨" : "󰌶"
+                  foreground: deviceItem.rowBulbOn ? content.view.fg : content.view.dim
+                  hoverColor: content.view.fg
+                  fontFamily: content.view.fontFamily
+                  enabled: deviceItem.rowBulbOnline && !deviceItem.rowBulbBusy
+                  hasCursor: content.view.hasCursorOn(deviceItem.rowBulbAction)
+                  tooltipText: deviceItem.rowBulbBusy
+                    ? "Switching LED control…"
+                    : "LED control " + (deviceItem.rowBulbOn ? "on" : "off")
+                      + ": click to turn " + (deviceItem.rowBulbOn ? "off" : "on")
+                  onClicked: content.view.runAction(deviceItem.rowBulbAction)
+                  onHovered: function(h) { content.view.hoverAction(deviceItem.rowBulbAction, h) }
                 }
               }
 
