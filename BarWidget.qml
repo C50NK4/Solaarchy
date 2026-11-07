@@ -18,7 +18,9 @@ import "icons.js" as Icons
 //   - solaarchy-monitor.py, a listen-only child of the shell, reports devices
 //     connecting and disconnecting, and receivers coming and going
 //   - the backlight switch runs `solaar config`, which hands the change to a
-//     running Solaar GUI so it is saved and re-applied when the keyboard wakes
+//     running Solaar GUI. That GUI does not always save it (seen with 1.1.20)
+//     and re-applies its saved value on every reconnect, so the widget puts
+//     back the light a keyboard had before its link dropped
 //   - built-in add-ons live in addons/, each in its own folder (see
 //     addons/ADDONS.md); Circadian runs the same backlight switch at dusk and
 //     dawn
@@ -211,6 +213,9 @@ BarWidget {
   property var pendingBacklight: ({})
   // Called with true or false when the running backlight switch ends.
   property var backlightDone: null
+  // Device id -> 0/1: the light a keyboard had before its link dropped,
+  // put back after it reconnects (see restoreBacklight()).
+  property var backlightRestore: ({})
   property bool refreshQueued: false
   // Settings changed in the panel show at once while `omarchy bar set`
   // round-trips through shell.json; each is dropped as the shell reports it
@@ -510,6 +515,16 @@ BarWidget {
         if (old.name && !reportedName(d.name)) { d.name = old.name; d.fullName = old.fullName }
         if (old.kind) d.kind = old.kind
       }
+      // Back from another Easy-Switch host, or switched back on: Solaar
+      // re-applies the backlight it saved, which can be stale (seen: saved
+      // Disabled while lit), so the light it had before it left goes back.
+      // Not on the first read: those rows come from the state file.
+      // ponytail: old.backlight is the last read (up to one poll old), and
+      // a first read back without a backlight reading skips the restore;
+      // the light still goes dark for ~3 s, as Solaar's own push comes first.
+      if (loaded && old && !old.online && d.online && old.backlight && d.backlight
+          && !!old.backlight.enabled !== !!d.backlight.enabled)
+        backlightRestore[String(d.id)] = old.backlight.enabled ? 1 : 0
       // A device we've seen before that came back without a battery or
       // backlight reading this time — asleep, its receiver busy with
       // another program, a detected HID++ reply race (d.busy), or just one
@@ -600,7 +615,27 @@ BarWidget {
     checkLowBattery()
     checkConnections(paired)
     saveState()
+    // Add-ons first: a switch they start (Circadian past a dusk or dawn)
+    // supersedes the restore.
     statusApplied()
+    restoreBacklight()
+  }
+
+  // One switch at a time; the read after it comes back here for the next.
+  // Every entry is dropped once looked at, so a hidden keyboard's can't linger.
+  function restoreBacklight() {
+    if (backlightProc.running) return
+    for (var id in backlightRestore) {
+      var target = backlightRestore[id]
+      delete backlightRestore[id]
+      var d = null
+      for (var i = 0; i < shown.length; i++)
+        if (String(shown[i].id) === id && isLive(shown[i])) d = shown[i]
+      if (d && d.backlight && backlightOn(d) !== (target === 1)) {
+        setBacklight(d, target)
+        return
+      }
+    }
   }
 
   // Warn once per discharge, and once more at criticalLevel. Only fresh
@@ -785,6 +820,7 @@ BarWidget {
 
   // done, if given, is called with true or false once the switch ends.
   function setBacklight(device, target, done) {
+    delete backlightRestore[String(device.id)]  // a newer switch wins
     backlightDone = done || null
     var next = Object.assign({}, pendingBacklight)
     next[device.id] = target

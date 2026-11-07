@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A keyboard's backlight comes back after an Easy-Switch round trip (or
+  switching it off and on). Solaar re-applies the backlight it saved on every
+  reconnect, and that saved value can be stale: an MX Keys Mini lit by
+  Solaarchy came back dark. Solaarchy now puts back the light it had before
+  its link dropped.
+
 ## 1.1.0
 
 - **LED**, a built-in add-on: a mouse with per-zone LED effects (Logitech G

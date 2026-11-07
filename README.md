@@ -93,8 +93,9 @@ The panel follows whichever Omarchy theme you pick.
   lets your user access Logitech receivers. Log out and back in (or replug the
   receiver) after installing it for the first time.
 
-- Recommended: keep the Solaar app running in the background, so backlight
-  changes are remembered and re-applied when the keyboard wakes. Add this to
+- Recommended: keep the Solaar app running in the background, so your other
+  Solaar settings are re-applied when a device reconnects. (Its saved backlight
+  can be out of date; Solaarchy puts the light back itself.) Add this to
   `~/.config/hypr/autostart.lua`:
 
   ```lua
