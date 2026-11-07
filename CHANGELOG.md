@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Haptics**, a built-in add-on by @hypergol-d (#4): a mouse with a haptic
+  motor (the MX Master 4, and any other with Solaar's HAPTIC feature) pulses
+  for the events you pick. Its drawer sets the level per mouse (Off, Low, Med,
+  High, Max). Its page lists the alerts (low battery, a window asking for
+  attention, the terminal bell, critical notices, all notifications, screen
+  sharing) and the desktop events (workspace, windows, fullscreen, floating,
+  monitor, submap, keyboard layout), each with a waveform: a row opens the
+  waveforms the mouse has, and picking one saves it and plays it. Quiet in
+  fullscreen, per-app waveforms for notifications, and
+  `addons/haptics/haptics.py play <waveform>` for scripts and keybinds. A
+  player keeps the mouse open while the add-on is on, so a pulse fires at
+  once. Off by default.
+- For add-ons: a `batteryLow(device, critical)` signal on the bar widget.
+- The curated add-ons section in Settings hides while it is empty.
+
 ## 1.1.1
 
 - **LED Effects**, a built-in add-on: a mouse with per-zone LED effects (Logitech G

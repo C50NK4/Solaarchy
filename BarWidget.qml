@@ -229,6 +229,9 @@ BarWidget {
   readonly property string panelPage: opened ? String(panelLoader.item.page) : ""
   // Each read that landed, for built-in add-ons to act on.
   signal statusApplied()
+  // A device just crossed the low or the critical mark, once per discharge,
+  // whether or not its notification is on.
+  signal batteryLow(var device, bool critical)
 
   // Right-clicking the bar icon toggles this device. Prefer one that is
   // online: the same keyboard can stay paired to a receiver while it is
@@ -661,11 +664,13 @@ BarWidget {
           if (notifyCritical) notifyBattery(d, true)
           else if (!next[d.id] && notifyLowBattery) notifyBattery(d, false)
           next[d.id] = "critical"
+          batteryLow(d, true)
         }
       } else if (draining && b.level <= lowThreshold) {
         if (!next[d.id]) {
           if (notifyLowBattery) notifyBattery(d, false)
           next[d.id] = "low"
+          batteryLow(d, false)
         }
       } else {
         delete next[d.id]
@@ -900,7 +905,7 @@ BarWidget {
   // Built in: the folders under addons/, each with a solaarchy-addon.json
   // like any add-on's, plus its on/off key in Solaarchy's own settings (see
   // addons/ADDONS.md). Read once at start, listed in this order.
-  readonly property var builtinIds: ["circadian", "led"]
+  readonly property var builtinIds: ["circadian", "led", "haptics"]
   property var builtins: []
   // Built-in add-on id -> its service: the part that runs for as long as the
   // widget does.
@@ -989,12 +994,9 @@ BarWidget {
   }
 
   // Curated: add-ons reviewed for Solaarchy, listed (and shown greyed where
-  // they fit) before they're installed. id: its plugin id, "" until it
-  // exists; repo, page: its repository and plugins.omarchy.org page, if any.
-  readonly property var curatedAddons: [
-    { "id": "", "category": "haptics", "label": "Haptics", "icon": "󰕦", "repo": "", "page": "",
-      "note": "Haptic feedback for the MX Master 4, as its own plugin. In development; nothing to install yet." }
-  ]
+  // they fit) before they're installed. Each: {id (its plugin id), category,
+  // label, icon, repo, page (its plugins.omarchy.org page), note}.
+  readonly property var curatedAddons: []
 
   // solaarchy-addons.py's last answer; re-read each time the panel opens.
   property var addons: []

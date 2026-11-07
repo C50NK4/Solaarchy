@@ -260,6 +260,7 @@ Column {
   // Add-ons reviewed for Solaarchy: listed before they're installed, with
   // their links; once installed, a switch like any other.
   Column {
+    visible: page.w.curatedAddons.length > 0
     width: parent.width
     spacing: Style.space(10)
 

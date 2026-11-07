@@ -12,7 +12,9 @@ add-ons in three groups:
 - **Built-in add-ons** come with Solaarchy, one folder each next to this
   file, and switch on and off in Settings: Circadian (the keyboard light by
   civil twilight, on by default), LED Effects (a mouse's lights: a master switch, one
-  cycler for all its zones and a hue slider, on by default). See [Built-in add-ons](#built-in-add-ons).
+  cycler for all its zones and a hue slider, on by default), Haptics (pulses
+  on a mouse with a haptic motor for picked events, off by default). See
+  [Built-in add-ons](#built-in-add-ons).
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
   plugins.omarchy.org page, and shown greyed in the drawers they fit.
@@ -201,6 +203,7 @@ Built-in add-ons ship inside Solaarchy, one folder each next to this file:
 |---|---|---|
 | `circadian/` | Circadian: the keyboard light on at dusk, off at dawn | service, page, drawer, `twilight.py` |
 | `led/` | LED Effects: a mouse's light — a master switch, one cycler for all zones, a hue slider | service, drawer, `led-state.py` |
+| `haptics/` | Haptics: pulses for picked events, the level per mouse | service, page, drawer, `haptics.py` (a player that keeps the device open) |
 
 Each has the same `solaarchy-addon.json`, with these keys on top:
 
@@ -230,6 +233,8 @@ A service gets two properties at creation:
   - `nowTick`: counts every 30 s
   - `home`
   - `statusApplied()`: a signal after every device read
+  - `batteryLow(device, critical)`: a signal when a device crosses the low
+    or the critical mark, once per discharge, notification on or not
 - **`addon`** is its entry: `id`, `setting`, `dir` (its folder), and the keys
   above.
 
@@ -283,9 +288,7 @@ ln -s ~/.config/omarchy/plugins/io.github.c50nk4.solaarchy/addons/skills/solaarc
 
 ## Curated add-ons
 
-| Category | Add-on | Status |
-|---|---|---|
-| `haptics` | Haptics for the MX Master 4 | In development as its own plugin. Shown greyed in the drawer until it ships. |
+None yet.
 
 To get yours listed, open an issue on
 [Solaarchy's repository](https://github.com/C50NK4/Solaarchy/issues) with its

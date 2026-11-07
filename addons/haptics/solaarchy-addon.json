@@ -1,0 +1,12 @@
+{
+  "api": 1,
+  "category": "haptics",
+  "features": ["HAPTIC"],
+  "label": "Haptics",
+  "icon": "󰕦",
+  "description": "Pulses on a mouse with a haptic motor for the alerts and desktop events you pick.",
+  "setting": "haptics",
+  "service": "Service.qml",
+  "page": "Page.qml",
+  "drawer": "Drawer.qml"
+}
