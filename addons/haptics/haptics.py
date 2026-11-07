@@ -136,7 +136,12 @@ def take_lock():
 
 
 def ask_server(command, timeout=2.0):
-    """Send one command to a running `serve`; its reply, or None if none is running."""
+    """Send one command to a running `serve`; its reply, or None if none is running.
+
+    A player that took the command but is slow to answer (a scan waiting on
+    the lock) still carries it out, so that counts as an answer: falling back
+    to playing here too would buzz twice.
+    """
     path = socket_path()
     if path is None:
         return None
@@ -146,11 +151,14 @@ def ask_server(command, timeout=2.0):
             s.connect(path)
             s.sendall((json.dumps(command) + "\n").encode())
             data = b""
-            while not data.endswith(b"\n"):
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                data += chunk
+            try:
+                while not data.endswith(b"\n"):
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                return {"error": "the haptics player is busy; it plays this when it can"}
     except OSError:
         return None
     try:
@@ -343,8 +351,10 @@ class NotificationWatch:
         self.proc = None
         self.buffer = b""
         self.current = None
+        self.wanted = False  # on in the service; a watcher that died is started again
 
     def start(self):
+        self.wanted = True
         if self.proc:
             return
         try:
@@ -356,7 +366,8 @@ class NotificationWatch:
             emit({"event": "error", "error": f"cannot watch notifications: {e}"})
             self.proc = None
 
-    def stop(self):
+    def stop(self, wanted=False):
+        self.wanted = wanted
         if self.proc:
             self.proc.terminate()
             try:
@@ -371,8 +382,7 @@ class NotificationWatch:
     def read(self):
         data = os.read(self.fileno(), 65536)
         if not data:
-            self.stop()
-            emit({"event": "error", "error": "notification watcher stopped"})
+            self.stop(wanted=True)  # started again from serve's loop
             return
         self.buffer += data
         *lines, self.buffer = self.buffer.split(b"\n")
@@ -432,8 +442,15 @@ def serve():
         emit({"event": "error", "error": "no private directory for the haptics socket"})
     else:
         # A live server already answering (a second shell) keeps its socket;
-        # anything else at the path is a leftover from one that died.
-        if ask_server({"cmd": "ping"}, timeout=0.5) is not None:
+        # anything else at the path is a leftover from one that died. The old
+        # shell's player, stopped by pdeathsig, gets 3 s to finish exiting.
+        taken = True
+        for _ in range(6):
+            if ask_server({"cmd": "ping"}, timeout=0.5) is None:
+                taken = False
+                break
+            time.sleep(0.5)
+        if taken:
             emit({"event": "error", "error": "another Solaarchy haptics player is running"})
         else:
             try:
@@ -468,10 +485,14 @@ def serve():
                 watch.append(server)
             if notifications.proc:
                 watch.append(notifications.fileno())
-            # A scan the lock put off: try again within a few seconds.
-            readable, _, _ = select.select(watch, [], [], 5.0 if haptics.dirty else None)
+            # A scan the lock put off, or a notification watcher that died:
+            # try again within a few seconds.
+            retry = haptics.dirty or (notifications.wanted and not notifications.proc)
+            readable, _, _ = select.select(watch, [], [], 5.0 if retry else None)
             if not readable and haptics.dirty and haptics.scan():
                 report(haptics)
+            if not readable and notifications.wanted and not notifications.proc:
+                notifications.start()
             for r in readable:
                 if r == sys.stdin.fileno():
                     data = os.read(r, 65536)
