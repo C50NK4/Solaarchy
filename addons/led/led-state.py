@@ -9,10 +9,10 @@ changed and Solaar's configuration file is never written; LED changes go through
 when the keyboard wakes.
 
 With --ids ID,ID,... (device ids as the core status script prints them), the
-"led" reading of every online device whose id is in that list is included; a
-device that is offline, or not in the list, comes back with "led": null and
-sends no HID++ traffic for its LED. Output: {"devices": [{"id": ..., "online":
-bool, "led": ... | null}, ...]}, one entry per id, or {"error": "..."} when the
+"led" reading of every online device whose id is in that list is included; an
+offline one comes back with "led": null, and a device not in the list is left
+out and not pinged. Output: {"devices": [{"id": ..., "online": bool, "led":
+... | null}, ...]}, one entry per id found, or {"error": "..."} when the
 Solaar library can't be imported at all. Without --ids (or with an empty list)
 nothing is read and the helper prints {"devices": []} at once.
 """
@@ -22,8 +22,6 @@ import fcntl
 import json
 import os
 import signal
-import stat
-import struct
 import sys
 import time
 
@@ -105,58 +103,18 @@ except Exception as e:  # Solaar missing or incompatible
 _solaar_config.save = lambda *args, **kwargs: None
 _solaar_config.do_save = lambda *args, **kwargs: None
 
-# One read at a time from this user: overlapping reads can pick up each
-# other's HID++ replies (see _consistent).
-#
-# The lock lives only in a directory no one else can write to, never a shared
-# one like /tmp: there another user could plant a symlink at the predictable
-# name and have every refresh open (formerly: truncate) any file of this
-# user's that the link points at.
-def _private_dir(path):
-    try:
-        st = os.stat(path)
-    except OSError:
-        return False
-    return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o022
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+from solaarchy_common import consistent as _consistent
+from solaarchy_common import device_id as _device_id
+from solaarchy_common import forget_features as _forget_features
+from solaarchy_common import online as _online
+from solaarchy_common import open_lock
+from solaarchy_common import safe as _safe
 
-
-def _lock_dir():
-    for d in (os.environ.get("XDG_RUNTIME_DIR"), f"/run/user/{os.getuid()}"):
-        if d and _private_dir(d):
-            return d
-    # No usable runtime dir (e.g. run outside a login session): a private
-    # directory of our own under the user's cache instead.
-    cache = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
-    d = os.path.join(cache, "solaarchy")
-    try:
-        os.makedirs(d, mode=0o700, exist_ok=True)
-    except OSError:
-        return None
-    return d if _private_dir(d) else None
-
-
-def _open_lock():
-    d = _lock_dir()
-    if d is None:
-        raise OSError("no private directory for the status lock")
-    path = os.path.join(d, "solaarchy-status.lock")
-    # No O_TRUNC: the file's content is never used, only its flock. The first
-    # run creates it with O_EXCL, so creating can never land on anything
-    # already there; later runs reopen it, and either way it is checked below.
-    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC
-    try:
-        fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError:
-        fd = os.open(path, flags)
-    st = os.fstat(fd)
-    if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_nlink != 1:
-        os.close(fd)
-        raise OSError(f"{d}/solaarchy-status.lock is not a private regular file")
-    return fd
-
+# One read at a time from this user; see solaarchy_common.py.
 
 try:
-    _lock = _open_lock()
+    _lock = open_lock()
 except OSError as e:
     _emit({"error": f"cannot take the status lock: {e}"})
     sys.exit(1)
@@ -285,85 +243,22 @@ def _led(dev):
             "zoneSettingPrefix": zone_prefix}
 
 
-def _online(dev):
-    # Without a listener for receiver notifications, Solaar marks every paired
-    # device online. Ping, as `solaar show` does, so a device that is switched
-    # off or asleep is reported offline instead of as "no battery info".
-    try:
-        return bool(dev.ping())
-    except Exception:  # NoSuchDevice: a pairing slot with nothing answering
-        return False
-
-
-def _consistent(dev):
-    """True if every feature slot this process looked up still answers the same.
-
-    All Solaar processes use one fixed HID++ software id, so a reply is matched
-    only by device, feature slot and function. When another process (the
-    Solaar GUI setting a device up after it reconnects, say) asks the same
-    device for a different feature at the same moment, this process can take
-    that reply as its own and cache the wrong slot for, e.g., the battery.
-    Asking again catches that: a clash twice in a row is very unlikely.
-    """
-    features = getattr(dev, "features", None)
-    if not isinstance(features, hidpp20.FeaturesArray):
-        return True  # HID++ 1.0 devices use fixed registers, not feature slots
-    for feature, index in list(dict.items(features)):
-        if index is None or int(feature) == 0:  # ROOT is always slot 0
-            continue
-        reply = dev.request(0x0000, struct.pack("!H", int(feature)))
-        if reply is None or reply[0] != (index or 0):
-            return False
-    return True
-
-
-def _forget_features(dev):
-    dev.features = hidpp20.FeaturesArray(dev)
-    dev._backlight = None
-    dev._led_effects = None
-
-
-def _safe(fn, fallback=None):
-    try:
-        return fn()
-    except Exception:
-        return fallback
-
-
-def _device_id(dev, path):
-    # serial/unitId are the stable, per-unit identities. Below that, wpid is
-    # only per-model, so two identical-model devices with neither serial nor
-    # unitId (older HID++1.0 hardware) would otherwise collide onto the same
-    # id and get merged into one entry; path:number (the receiver's hidraw
-    # node plus this device's pairing slot, or a directly-connected device's
-    # own node) disambiguates them and is available whenever wpid would be.
-    # A device that hasn't answered yet (e.g. a Bluetooth keyboard waking up)
-    # reports an all-zero serial/unitId: not an identity, skip it.
-    serial = _safe(lambda: dev.serial)
-    if serial and serial.strip("0"):
-        return serial
-    unit_id = _safe(lambda: dev.unitId)
-    if unit_id and unit_id.strip("0"):
-        return unit_id
-    number = _safe(lambda: dev.number)
-    if path and number is not None:
-        return f"{path}:{number}"
-    return _safe(lambda: dev.wpid)
-
-
 def _entry(dev, path):
     # Every device — receiver-paired and directly connected alike — is looked
     # up under the receiver's (or its own) hidraw path, the way the core
-    # status script does. Only an online device that was actually asked for
-    # gets its led reading, and that reading is taken inside the same
-    # cross-process consistency audit the core runs: a clash twice in a row
-    # means it is someone else's reply, so report nothing rather than trust it.
+    # status script does. Only a device that was asked for is pinged at all,
+    # and its led reading is taken inside the same cross-process consistency
+    # audit the core runs: a clash twice in a row means it is someone else's
+    # reply, so report nothing rather than trust it.
+    device_id = _device_id(dev, path)
+    if device_id not in _ids:
+        return None
     entry = {
-        "id": _device_id(dev, path),
+        "id": device_id,
         "online": _online(dev),
         "led": None,
     }
-    if entry["online"] and entry["id"] in _ids:
+    if entry["online"]:
         for attempt in range(2):
             led = _led(dev)
             if _safe(lambda: _consistent(dev), False):
@@ -388,7 +283,9 @@ def _scan(info):
 
     def add(dev):
         try:
-            _devices.append(_entry(dev, info.path))
+            entry = _entry(dev, info.path)
+            if entry:
+                _devices.append(entry)
         except Exception:
             pass
 
