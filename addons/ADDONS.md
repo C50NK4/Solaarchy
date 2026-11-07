@@ -11,8 +11,7 @@ Solaarchy's Settings lists add-ons in three groups:
 - **Built-in add-ons** come with Solaarchy, one folder each next to this
   file, and switch on and off in Settings: Circadian (the keyboard light by
   civil twilight, on by default), LED (a mouse's lights: a master switch, one
-  cycler for all its zones and a hue slider, on by default) and Rainbow LED
-  (an experimental mock-up, off by default). See [Built-in add-ons](#built-in-add-ons).
+  cycler for all its zones and a hue slider, on by default). See [Built-in add-ons](#built-in-add-ons).
 - **Curated add-ons** have been reviewed for Solaarchy. They are listed even
   before they're installed, with links to their repository and their
   plugins.omarchy.org page, and shown greyed in the drawers they fit.
@@ -125,9 +124,6 @@ Column {
 | `openPanel(extra)` | Opens your floating panel for this device. Keys in `extra` join the payload. |
 | `refresh()` | Asks Solaarchy for a fresh device read, for example after you changed something. |
 
-`rainbow/Drawer.qml` next to this file is a complete drawer that uses only
-this API.
-
 Rules:
 
 - **Width follows the drawer.** Size your height with `implicitHeight`.
@@ -202,7 +198,6 @@ Built-in add-ons ship inside Solaarchy, one folder each next to this file:
 |---|---|---|
 | `circadian/` | Circadian: the keyboard light on at dusk, off at dawn | service, page, drawer, `twilight.py` |
 | `led/` | LED: a mouse's light — a master switch, one cycler for all zones, a hue slider | service, drawer, `led-state.py` |
-| `rainbow/` | Rainbow LED: a greyed mock-up, off by default | drawer only, through the API above |
 
 Each has the same `solaarchy-addon.json`, with these keys on top:
 
@@ -211,7 +206,6 @@ Each has the same `solaarchy-addon.json`, with these keys on top:
 | `setting` | Required. Its on/off key in Solaarchy's own settings, such as `circadian`. |
 | `default` | `true` to start on until it is switched off. Missing means off. |
 | `description` | Its caption in Settings, unless its service gives one. |
-| `experimental` | `true` keeps it out of the drawers while it is off. |
 | `service` | Optional. A QML file whose root is an `Item`, created once at start. It runs for as long as the widget does. |
 | `page` | Optional. A QML file for its own page in the panel, behind the chevron next to its switch. |
 

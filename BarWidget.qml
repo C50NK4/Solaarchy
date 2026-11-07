@@ -885,7 +885,7 @@ BarWidget {
   // Built in: the folders under addons/, each with a solaarchy-addon.json
   // like any add-on's, plus its on/off key in Solaarchy's own settings (see
   // addons/ADDONS.md). Read once at start, listed in this order.
-  readonly property var builtinIds: ["circadian", "led", "rainbow"]
+  readonly property var builtinIds: ["circadian", "led"]
   property var builtins: []
   // Built-in add-on id -> its service: the part that runs for as long as the
   // widget does.
@@ -909,7 +909,6 @@ BarWidget {
       "label": spec.label || id,
       "icon": spec.icon || "",
       "description": spec.description || "",
-      "experimental": spec.experimental === true,
       "setting": spec.setting,
       // On until switched off, when its spec says so.
       "default": spec.default === true,
@@ -1045,8 +1044,7 @@ BarWidget {
     for (var c = 0; c < categories.length; c++) {
       var cat = categories[c]
       var present = cat.features.some(function(f) { return have.indexOf(f) >= 0 })
-      // An experimental built-in stays out of sight while it is off.
-      var fit = all.filter(function(a) { return addonFits(a, device, cat.id) && (!a.experimental || addonOn(a)) })
+      var fit = all.filter(function(a) { return addonFits(a, device, cat.id) })
       var known = fit.length > 0 || !present ? [] : curatedAddons.filter(function(k) {
         return k.category === cat.id && !installedAddon(k.id)
       })

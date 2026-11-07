@@ -121,9 +121,6 @@ Column {
 }
 ```
 
-`addons/rainbow/Drawer.qml` in Solaarchy is a complete drawer that uses only
-this API.
-
 ## 4. Test
 
 ```sh
@@ -166,13 +163,14 @@ installs them.
 ## Built-in
 
 Follow "Built-in add-ons" in ADDONS.md: the extra keys (`setting`, `service`,
-`page`, `description`, `experimental`), the service contract, the action
+`page`, `description`), the service contract, the action
 names, and the steps to add one (`builtinIds` in `BarWidget.qml`, and the
 setting in `manifest.json`). Models to copy from:
 
 - `addons/circadian/`: a service, a page, a drawer row in the keyboard cursor,
   and a Python helper
-- `addons/rainbow/`: a drawer only, off by default, experimental
+- `addons/led/`: a service, a drawer, a bulb on the device row, and a Python
+  helper
 
 Then run `omarchy plugin validate .` in the repository, restart the shell,
 and check Settings, a drawer, its page, and the keys. Its default goes in two
