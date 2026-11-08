@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.2
 
 - **Haptics**, a built-in add-on by @hypergol-d (#4): a mouse with a haptic
   motor (the MX Master 4, and any other with Solaar's HAPTIC feature) pulses
