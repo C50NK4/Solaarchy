@@ -312,6 +312,43 @@ Item {
   readonly property string eventsText: eventsOn === 0 ? "no events picked"
     : eventsOn === 1 ? "1 event buzzes" : eventsOn + " events buzz"
 
+  // ---- Row switch ----
+
+  // Haptics on or off for one mouse, on its row: off sets level 0 and keeps
+  // the level it had, on puts that back (Med the first time). While the
+  // add-on is off, a greyed switch on every haptic mouse leads to its page,
+  // whose switch turns it on.
+  function rowBulb(device) {
+    if (!device || !fits(device)) return null
+    if (!on) return {
+      "on": false, "enabled": true, "icon": "󰕦", "action": "addon-page:haptics",
+      "tooltip": "Haptics is off: click to set it up"
+    }
+    var lvl = level(device)
+    return {
+      "on": lvl > 0,
+      "enabled": !!device.online && lvl >= 0 && !levelProc.running,
+      "icon": "󰕦",
+      "tooltip": levelProc.running ? "Changing the haptic level…"
+        : lvl < 0 ? (device.online ? "Reading its haptic level…" : "Haptics: asleep")
+        : lvl > 0 ? "Haptics on, level " + lvl + ": click to turn off"
+        : "Haptics off on this mouse: click to turn on",
+      "action": "haptics.switch:" + device.id
+    }
+  }
+
+  function switchHaptics(device) {
+    var lvl = level(device)
+    if (lvl < 0) return
+    if (lvl > 0) {
+      host.saveDeviceSetting(device, "hapticLevel", lvl)
+      setLevel(device, 0)
+    } else {
+      var saved = Number(host.deviceSetting(device, "hapticLevel"))
+      setLevel(device, saved > 0 ? saved : 50)
+    }
+  }
+
   // ---- Keyboard cursor ----
 
   // Actions are "<add-on id>.<verb>[:<device id>]"; Panel.qml hands them to run().
@@ -322,7 +359,7 @@ Item {
   // Mirrors Page.qml, in reading order.
   readonly property var pageActions: {
     var list = ["haptics.toggle"]
-    for (var i = 0; i < haptic.length; i++) list = list.concat(levelActions(haptic[i]))
+    if (on) for (var i = 0; i < haptic.length; i++) list = list.concat(levelActions(haptic[i]))
     var rows = Events.inGroup("alerts").concat(Events.inGroup("desktop"))
     for (var r = 0; r < rows.length; r++) {
       list.push("haptics.event-" + rows[r].setting)
@@ -339,6 +376,7 @@ Item {
 
   function run(verb, device) {
     if (verb === "toggle") host.saveSetting(addon.setting, !on)
+    else if (verb === "switch") { if (device) switchHaptics(device) }
     else if (verb === "pause") host.saveSetting("hapticPauseFullscreen", !pauseFullscreen)
     else if (verb.indexOf("level-") === 0) setLevel(device, parseInt(verb.slice(6), 10))
     else if (verb.indexOf("event-") === 0) expanded = expanded === verb.slice(6) ? "" : verb.slice(6)

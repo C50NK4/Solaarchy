@@ -173,7 +173,7 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see [Circadian](#circadian) |
 | `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
 | `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
-| `led`                  | `true`   | Built-in add-on: a mouse's LED effects and colour, see [LED Effects](#led-effects) |
+| `led`                  | `false`  | Built-in add-on: a mouse's LED effects and colour, see [LED Effects](#led-effects) |
 | `haptics`              | `false`  | Built-in add-on: pulses on a mouse with a haptic motor, see [Haptics](#haptics) |
 | `haptic…`              | *(see page)* | Each event's waveform (`hapticWorkspace`, `hapticBell`, …: a waveform name or `off`), `hapticPauseFullscreen`, `hapticNotificationApps`; set on the Haptics page |
 | `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `circadian` (`false` skips), `hidden` |
@@ -241,8 +241,8 @@ panel of its own. Settings lists them in three groups, each add-on with its own
 switch. [The list of add-ons](addons/README.md) has what's available:
 
 - **Built in:** they come with Solaarchy, each in its own folder under
-  `addons/`. [Circadian](#circadian) and [LED Effects](#led-effects) are on by default,
-  [Haptics](#haptics) is off until you switch it on.
+  `addons/`. [Circadian](#circadian) is on by default; [LED Effects](#led-effects)
+  and [Haptics](#haptics) are off until you switch them on.
 - **Curated:** reviewed for Solaarchy, and listed with links to their
   repository and plugins.omarchy.org page even before you install them.
 - **Other:** any other installed Omarchy plugin with a `solaarchy-addon.json`.
@@ -305,6 +305,9 @@ A mouse with a haptic motor (the MX Master 4) can pulse when something happens.
 Off by default: switch it on in Settings or on its page. Written by
 [@hypergol-d](https://github.com/hypergol-d).
 
+- **The switch on its row** turns haptics on or off for that mouse, keeping
+  its level for next time. While the add-on is off, the switch shows greyed
+  and opens the Haptics page, where the switch at the top turns it on.
 - **Its drawer** sets the mouse's haptic level: Off, Low, Med, High or Max.
 - **Its page** lists the events, each with the waveform it plays. A row opens
   the waveforms the mouse has, and picking one saves it and plays it.

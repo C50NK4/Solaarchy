@@ -298,10 +298,11 @@ Item {
                   onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
                 }
 
-                // The LED control switch on a mouse's row: the same bulb and
-                // the same free space as the backlight one, the two never
-                // both showing. The row keeps the chevron either way, so the
-                // drawer stays reachable while the switch is off.
+                // A built-in add-on's switch on a device's row (LED control,
+                // haptics): the same free space as the backlight bulb, the two
+                // never both showing, with the add-on's own glyph if it gives
+                // one. The row keeps the chevron either way, so the drawer
+                // stays reachable while the switch is off.
                 PanelActionButton {
                   id: ledBulb
                   readonly property real freeStart: nameText.width
@@ -310,7 +311,8 @@ Item {
                   x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
                   anchors.verticalCenter: parent.verticalCenter
                   fontSize: Style.font.body
-                  iconText: deviceItem.rowBulbOn ? "󰛨" : "󰌶"
+                  iconText: deviceItem.rowBulb && deviceItem.rowBulb.icon ? deviceItem.rowBulb.icon
+                    : deviceItem.rowBulbOn ? "󰛨" : "󰌶"
                   foreground: deviceItem.rowBulbOn ? content.view.fg : content.view.dim
                   hoverColor: content.view.fg
                   fontFamily: content.view.fontFamily

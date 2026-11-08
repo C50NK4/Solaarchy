@@ -14,7 +14,13 @@
   `addons/haptics/haptics.py play <waveform>` for scripts and keybinds. A
   player keeps the mouse open while the add-on is on, so a pulse fires at
   once. Off by default.
-- For add-ons: a `batteryLow(device, critical)` signal on the bar widget.
+  A switch on the mouse's row turns haptics off and back on at the same
+  level; while the add-on is off, it shows greyed and opens the add-on's page.
+- **LED Effects is now off by default**, like Haptics; Circadian stays on.
+  Switch it on in Settings. If you used it in 1.1.1 without ever touching its
+  switch, it is off after this update.
+- For add-ons: a `batteryLow(device, critical)` signal on the bar widget, and
+  an optional `icon` on a row switch (`rowBulb`).
 - The curated add-ons section in Settings hides while it is empty.
 
 ## 1.1.1

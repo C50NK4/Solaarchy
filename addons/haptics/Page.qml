@@ -53,7 +53,7 @@ Column {
 
   // ---- Level ----
   Column {
-    visible: page.service.haptic.length > 0
+    visible: page.service.on && page.service.haptic.length > 0
     width: parent.width
     spacing: Style.space(8)
 

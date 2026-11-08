@@ -33,7 +33,7 @@
       "circadian": true,
       "circadianOffset": 0,
       "circadianLocation": "",
-      "led": true,
+      "led": false,
       "haptics": false,
       "devices": {}
     },
@@ -146,8 +146,8 @@
         "key": "led",
         "type": "boolean",
         "label": "LED Effects",
-        "description": "Built-in add-on, on by default: effect and colour of a device's LEDs, all zones at once. A device's drawer in the panel has the controls.",
-        "defaultValue": true
+        "description": "Built-in add-on, off by default: effect and colour of a device's LEDs, all zones at once. A device's drawer in the panel has the controls.",
+        "defaultValue": false
       },
       {
         "key": "haptics",
