@@ -7,7 +7,7 @@ one, see [ADDONS.md](ADDONS.md).
 |---|---|---|---|---|---|
 | [Circadian](circadian/) | Built in | Backlit keyboards | Backlight on at civil dusk, off at civil dawn | On by default | <img src="../screenshots/addons/circadian.png" alt="The Circadian page: today as a 24-hour strip, the timing and the location" width="200"> |
 | [LED Effects](led/) | Built in | Mice with LED effects | A master switch on the row, one effect cycler for all zones, a hue slider | Off by default; `RGB_EFFECTS` mice untested on hardware | <img src="../screenshots/addons/led.png" alt="A G403 HERO's drawer: the LED effect set to Breathe, with the hue slider" width="200"><br><sub>By @cbeaujoin</sub> |
-| [Haptics](haptics/) | Built in | Mice with a haptic motor (MX Master 4) | Pulses for the alerts and desktop events you pick, and the level per mouse; `haptics.py play` for scripts | Off by default | <sub>By @hypergol-d</sub> |
+| [Haptics](haptics/) | Built in | Mice with a haptic motor (MX Master 4) | Pulses for the alerts and desktop events you pick, and the level per mouse; `haptics.py play` for scripts | Off by default | <img src="../screenshots/addons/haptics.png" alt="The Haptics page: the level, the alert and desktop events with their waveforms, and quiet in fullscreen" width="200"><br><sub>By @hypergol-d</sub> |
 
 - **Built in:** ships with Solaarchy, switched on and off in Settings.
 - **Curated:** reviewed for Solaarchy, and listed in Settings even before it's
