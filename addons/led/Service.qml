@@ -431,8 +431,8 @@ Item {
       }
       var yaml = "ID: " + nextId
       for (var q in params) yaml += ", " + q + ": " + params[q]
-      cmds.push("solaar config " + arg + " " + zonePrefix + zone.location +
-        " '!LEDEffectSetting {" + yaml + "}'")
+      cmds.push("solaar config " + arg + " " + service.shellQuote(zonePrefix + zone.location) +
+        " " + service.shellQuote("!LEDEffectSetting {" + yaml + "}"))
       pending[id + ":" + zone.location] = nextId
     }
     // Used while the control is off, the change turns it back on first — the
@@ -441,7 +441,7 @@ Item {
     var pendingCtl = Object.assign({}, service.pendingControl)
     if (!service.controlOn(id)) {
       pendingCtl[id] = 1
-      cmds.unshift("solaar config " + arg + " " + (led.controlSetting || "led_control") + " true")
+      cmds.unshift("solaar config " + arg + " " + service.shellQuote(led.controlSetting || "led_control") + " true")
     }
     service.pendingEffect = pending
     service.pendingControl = pendingCtl
@@ -482,8 +482,8 @@ Item {
       params.color = color
       var yaml = "ID: " + effectId
       for (var q in params) yaml += ", " + q + ": " + params[q]
-      cmds.push("solaar config " + arg + " " + zonePrefix + zone.location +
-        " '!LEDEffectSetting {" + yaml + "}'")
+      cmds.push("solaar config " + arg + " " + service.shellQuote(zonePrefix + zone.location) +
+        " " + service.shellQuote("!LEDEffectSetting {" + yaml + "}"))
       pending[id + ":" + zone.location] = color
     }
     if (cmds.length === 0) return
@@ -492,7 +492,7 @@ Item {
     var pendingCtl = Object.assign({}, service.pendingControl)
     if (!service.controlOn(id)) {
       pendingCtl[id] = 1
-      cmds.unshift("solaar config " + arg + " " + (led.controlSetting || "led_control") + " true")
+      cmds.unshift("solaar config " + arg + " " + service.shellQuote(led.controlSetting || "led_control") + " true")
     }
     service.pendingColor = pending
     service.pendingControl = pendingCtl
@@ -501,10 +501,10 @@ Item {
     writeProc.running = true
   }
 
-  // Single-quote for the chained `sh -c` command: the device arg is a name
-  // with spaces on a directly connected node, and the whole chain is one
-  // shell string, so the per-argument quoting of the single-setting calls
-  // no longer applies.
+  // Single-quote for the chained `sh -c` command: the whole chain is one
+  // shell string, so every piece that comes from a device or from Solaar's
+  // saved settings (the device name, setting names, effect params) is quoted
+  // here, never pasted in as it is.
   function shellQuote(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
   }
