@@ -24,6 +24,8 @@ app. Read through [Solaar](https://github.com/pwr-Solaar/Solaar).
   civil dusk and goes dark at civil dawn, worked out offline for where you are
 - **LED Effects**, a built-in add-on for mice with LED effects: a master switch on the
   row, one effect cycler for all zones, and a hue slider
+- **Haptics**, a built-in add-on for mice with a haptic motor (MX Master 4):
+  pulses for the alerts and desktop events you pick, and the level per mouse
 - Settings in the panel, behind the gear; the bar icon picker behind the big
   icon; a one-click way to open Solaar
 - An **auto** bar icon that shows the keyboard, the mouse, or both, whichever
@@ -171,7 +173,9 @@ omarchy bar move io.github.c50nk4.solaarchy --section right
 | `circadian`            | `true`   | Built-in add-on: backlight on at civil dusk, off at civil dawn, see [Circadian](#circadian) |
 | `circadianOffset`      | `0`      | Minutes the light goes on before dusk and off after dawn (−120 to 120; negative: after and before) |
 | `circadianLocation`    | *(empty)*| `lat, lon` for dusk and dawn. Empty means Omarchy's weather location, else your timezone's city |
-| `led`                  | `true`   | Built-in add-on: a mouse's LED effects and colour, see [LED Effects](#led-effects) |
+| `led`                  | `false`  | Built-in add-on: a mouse's LED effects and colour, see [LED Effects](#led-effects) |
+| `haptics`              | `false`  | Built-in add-on: pulses on a mouse with a haptic motor, see [Haptics](#haptics) |
+| `haptic…`              | *(see page)* | Each event's waveform (`hapticWorkspace`, `hapticBell`, …: a waveform name or `off`), `hapticPauseFullscreen`, `hapticNotificationApps`; set on the Haptics page |
 | `devices`              | `{}`     | Per-device choices made in the drawers, by device id: `circadian` (`false` skips), `hidden` |
 
 Connected and disconnected notifications wait 5 minutes because Solaarchy
@@ -237,10 +241,10 @@ panel of its own. Settings lists them in three groups, each add-on with its own
 switch. [The list of add-ons](addons/README.md) has what's available:
 
 - **Built in:** they come with Solaarchy, each in its own folder under
-  `addons/`. [Circadian](#circadian) and [LED Effects](#led-effects) are on by default.
+  `addons/`. [Circadian](#circadian) is on by default; [LED Effects](#led-effects)
+  and [Haptics](#haptics) are off until you switch them on.
 - **Curated:** reviewed for Solaarchy, and listed with links to their
   repository and plugins.omarchy.org page even before you install them.
-  Haptics for the MX Master 4 is the first, still in development.
 - **Other:** any other installed Omarchy plugin with a `solaarchy-addon.json`.
   They show up by themselves and work the same, but nobody has reviewed them.
 
@@ -294,6 +298,34 @@ family) gets a bulb on its row and controls in its drawer:
 Changing an effect or colour while control is off turns it back on. The state
 comes from Solaar's saved settings, so if the drawer says to, set an effect in
 Solaar once. Tested on a G403 HERO; the RGB-effect family is untested on hardware.
+
+### Haptics
+
+A mouse with a haptic motor (the MX Master 4) can pulse when something happens.
+Off by default: switch it on in Settings or on its page. Written by
+[@hypergol-d](https://github.com/hypergol-d).
+
+- **The switch on its row** turns haptics on or off for that mouse, keeping
+  its level for next time. While the add-on is off, the switch shows greyed
+  and opens the Haptics page, where the switch at the top turns it on.
+- **Its drawer** sets the mouse's haptic level: Off, Low, Med, High or Max.
+- **Its page** lists the events, each with the waveform it plays. A row opens
+  the waveforms the mouse has, and picking one saves it and plays it.
+  - **Alerts:** Solaarchy's low battery, a window asking for attention, the
+    terminal bell, critical notices, all notifications, screen sharing.
+    The first four are on.
+  - **Desktop:** workspace switch, window opened, closed, moved, fullscreen,
+    floating, monitor, submap, keyboard layout. All off.
+  - **Quiet in fullscreen** mutes the desktop events while a game or a video
+    is fullscreen.
+  - **Per app:** `slack=knock, spotify=off` gives an app's notifications their
+    own waveform, or none.
+- **From a script or a keybind:** `addons/haptics/haptics.py play completed`
+  in Solaarchy's folder (`list` shows the waveforms). With the add-on on, it
+  plays at once through the running player.
+
+Notifications are watched only while a notification event is on, with
+`dbus-monitor`, and only the app name and urgency are read, never the text.
 
 ### Write your own
 

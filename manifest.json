@@ -33,7 +33,8 @@
       "circadian": true,
       "circadianOffset": 0,
       "circadianLocation": "",
-      "led": true,
+      "led": false,
+      "haptics": false,
       "devices": {}
     },
     "schema": [
@@ -145,8 +146,15 @@
         "key": "led",
         "type": "boolean",
         "label": "LED Effects",
-        "description": "Built-in add-on, on by default: effect and colour of a device's LEDs, all zones at once. A device's drawer in the panel has the controls.",
-        "defaultValue": true
+        "description": "Built-in add-on, off by default: effect and colour of a device's LEDs, all zones at once. A device's drawer in the panel has the controls.",
+        "defaultValue": false
+      },
+      {
+        "key": "haptics",
+        "type": "boolean",
+        "label": "Haptics",
+        "description": "Built-in add-on, off by default: pulses on a mouse with a haptic motor (the MX Master 4) for the alerts and desktop events you pick. Its page in the panel has the events and waveforms.",
+        "defaultValue": false
       }
     ]
   }

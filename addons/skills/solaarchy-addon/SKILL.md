@@ -171,6 +171,9 @@ setting in `manifest.json`). Models to copy from:
   and a Python helper
 - `addons/led/`: a service, a drawer, a bulb on the device row, and a Python
   helper
+- `addons/haptics/`: a service with a long-running player (a Python child
+  that keeps the device open), Hyprland events, a page with rows that open in
+  place, and a drawer with a per-device level
 
 Then run `omarchy plugin validate .` in the repository, restart the shell,
 and check Settings, a drawer, its page, and the keys. Its default goes in two

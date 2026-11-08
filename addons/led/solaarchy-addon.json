@@ -6,7 +6,6 @@
   "icon": "󰛨",
   "description": "Effect and colour of a device's LEDs, all zones at once.",
   "setting": "led",
-  "default": true,
   "service": "Service.qml",
   "drawer": "Drawer.qml"
 }
