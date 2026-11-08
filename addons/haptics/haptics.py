@@ -466,6 +466,7 @@ def serve():
             finally:
                 os.umask(old_umask)
             server.listen(8)
+            own = os.stat(path).st_ino
     emit({"event": "ready", "socket": path if server else None})
     # Find the devices now rather than on the first request, so the first
     # event after login buzzes as promptly as every later one. Commands that
@@ -557,8 +558,11 @@ def serve():
         notifications.stop()
         if server:
             server.close()
+            # Only our own: the next shell's player may already have bound a
+            # new socket at the same path.
             try:
-                os.unlink(path)
+                if os.lstat(path).st_ino == own:
+                    os.unlink(path)
             except OSError:
                 pass
         haptics.close()

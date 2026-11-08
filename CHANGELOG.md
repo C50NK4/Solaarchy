@@ -16,6 +16,10 @@
   once. Off by default.
   A switch on the mouse's row turns haptics off and back on at the same
   level; while the add-on is off, it shows greyed and opens the add-on's page.
+- **Row switches sit at the right**, just before the battery percentage,
+  instead of floating in the middle of the free space. The percentage keeps
+  room for "100%", so the switches stay put whatever the level, and a second
+  switch would line up to the left of the first.
 - **LED Effects is now off by default**, like Haptics; Circadian stays on.
   Switch it on in Settings. If you used it in 1.1.1 without ever touching its
   switch, it is off after this update.

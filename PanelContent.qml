@@ -210,7 +210,6 @@ Item {
           readonly property var rowBulb: content.w.rowBulbFor(modelData)
           readonly property bool rowBulbOn: rowBulb ? rowBulb.on : false
           readonly property string rowBulbAction: rowBulb ? rowBulb.action : ""
-          readonly property var activeBulb: bulb.visible ? bulb : (ledBulb.visible ? ledBulb : null)
           readonly property real labelsGap: Style.space(8)
           readonly property string drawerAction: "drawer:" + modelData.id
           readonly property bool drawerOpen: content.view.drawerId === String(modelData.id)
@@ -252,17 +251,17 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(1)
 
-              // Name, with the light switch in the space after it: the
-              // backlight on keyboards, the LED control on mice.
+              // Name, then the row's switches at the far end: the backlight on
+              // keyboards, an add-on's switch (LED, haptics) on mice.
               Item {
                 width: parent.width
-                implicitHeight: Math.max(nameText.implicitHeight, deviceItem.activeBulb ? deviceItem.activeBulb.implicitHeight : 0)
+                implicitHeight: Math.max(nameText.implicitHeight, rowButtons.implicitHeight)
 
                 Text {
                   id: nameText
                   anchors.left: parent.left
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Math.min(implicitWidth, parent.width - (deviceItem.activeBulb ? deviceItem.activeBulb.width + Style.space(8) : 0))
+                  width: Math.min(implicitWidth, parent.width - (rowButtons.width > 0 ? rowButtons.width + Style.space(8) : 0))
                   textFormat: Text.PlainText
                   text: deviceItem.modelData.name
                   color: content.view.fg
@@ -272,55 +271,55 @@ Item {
                   elide: Text.ElideRight
                 }
 
-                PanelActionButton {
-                  id: bulb
-                  // Centred in the free space between the end of the name and
-                  // the percentage, which starts labelsGap past this row.
-                  readonly property real freeStart: nameText.width
-                  readonly property real freeEnd: parent.width + deviceItem.labelsGap
-                  visible: deviceItem.hasBacklight
-                  x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
+                // The row's buttons, right-aligned just before the percentage
+                // column: the first sits nearest it, any more line up to its left.
+                Row {
+                  id: rowButtons
+                  anchors.right: parent.right
                   anchors.verticalCenter: parent.verticalCenter
-                  fontSize: Style.font.body
-                  iconText: deviceItem.lightOn ? "󰛨" : "󰌶"
-                  foreground: deviceItem.lightOn ? content.view.fg : content.view.dim
-                  hoverColor: content.view.fg
-                  fontFamily: content.view.fontFamily
-                  enabled: !content.w.backlightBusy && deviceItem.modelData.online
-                  hasCursor: content.view.hasCursorOn("backlight:" + deviceItem.modelData.id)
-                  tooltipText: content.w.backlightBusyFor(deviceItem.modelData)
-                    ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
-                    : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
-                      + (deviceItem.lightOn ? "off" : "on")
-                      + (content.w.addonTooltip(deviceItem.modelData) !== ""
-                         ? "\n" + content.w.addonTooltip(deviceItem.modelData) : "")
-                  onClicked: content.w.toggleBacklight(deviceItem.modelData)
-                  onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
-                }
+                  layoutDirection: Qt.RightToLeft
+                  spacing: Style.space(4)
 
-                // A built-in add-on's switch on a device's row (LED control,
-                // haptics): the same free space as the backlight bulb, the two
-                // never both showing, with the add-on's own glyph if it gives
-                // one. The row keeps the chevron either way, so the drawer
-                // stays reachable while the switch is off.
-                PanelActionButton {
-                  id: ledBulb
-                  readonly property real freeStart: nameText.width
-                  readonly property real freeEnd: parent.width + deviceItem.labelsGap
-                  visible: deviceItem.rowBulb !== null
-                  x: Math.round(freeStart + Math.max(Style.space(4), (freeEnd - freeStart - width) / 2))
-                  anchors.verticalCenter: parent.verticalCenter
-                  fontSize: Style.font.body
-                  iconText: deviceItem.rowBulb && deviceItem.rowBulb.icon ? deviceItem.rowBulb.icon
-                    : deviceItem.rowBulbOn ? "󰛨" : "󰌶"
-                  foreground: deviceItem.rowBulbOn ? content.view.fg : content.view.dim
-                  hoverColor: content.view.fg
-                  fontFamily: content.view.fontFamily
-                  enabled: deviceItem.rowBulb ? deviceItem.rowBulb.enabled : false
-                  hasCursor: content.view.hasCursorOn(deviceItem.rowBulbAction)
-                  tooltipText: deviceItem.rowBulb ? deviceItem.rowBulb.tooltip : ""
-                  onClicked: content.view.runAction(deviceItem.rowBulbAction)
-                  onHovered: function(h) { content.view.hoverAction(deviceItem.rowBulbAction, h) }
+                  PanelActionButton {
+                    id: bulb
+                    visible: deviceItem.hasBacklight
+                    fontSize: Style.font.body
+                    iconText: deviceItem.lightOn ? "󰛨" : "󰌶"
+                    foreground: deviceItem.lightOn ? content.view.fg : content.view.dim
+                    hoverColor: content.view.fg
+                    fontFamily: content.view.fontFamily
+                    enabled: !content.w.backlightBusy && deviceItem.modelData.online
+                    hasCursor: content.view.hasCursorOn("backlight:" + deviceItem.modelData.id)
+                    tooltipText: content.w.backlightBusyFor(deviceItem.modelData)
+                      ? (deviceItem.lightOn ? "Turning backlight on…" : "Turning backlight off…")
+                      : "Backlight " + (deviceItem.lightOn ? "on" : "off") + ": click to turn "
+                        + (deviceItem.lightOn ? "off" : "on")
+                        + (content.w.addonTooltip(deviceItem.modelData) !== ""
+                           ? "\n" + content.w.addonTooltip(deviceItem.modelData) : "")
+                    onClicked: content.w.toggleBacklight(deviceItem.modelData)
+                    onHovered: function(h) { content.view.hoverAction("backlight:" + deviceItem.modelData.id, h) }
+                  }
+
+                  // A built-in add-on's switch on a device's row (LED control,
+                  // haptics): in the same row as the backlight bulb, the two
+                  // never both showing, with the add-on's own glyph if it gives
+                  // one. The row keeps the chevron either way, so the drawer
+                  // stays reachable while the switch is off.
+                  PanelActionButton {
+                    id: ledBulb
+                    visible: deviceItem.rowBulb !== null
+                    fontSize: Style.font.body
+                    iconText: deviceItem.rowBulb && deviceItem.rowBulb.icon ? deviceItem.rowBulb.icon
+                      : deviceItem.rowBulbOn ? "󰛨" : "󰌶"
+                    foreground: deviceItem.rowBulbOn ? content.view.fg : content.view.dim
+                    hoverColor: content.view.fg
+                    fontFamily: content.view.fontFamily
+                    enabled: deviceItem.rowBulb ? deviceItem.rowBulb.enabled : false
+                    hasCursor: content.view.hasCursorOn(deviceItem.rowBulbAction)
+                    tooltipText: deviceItem.rowBulb ? deviceItem.rowBulb.tooltip : ""
+                    onClicked: content.view.runAction(deviceItem.rowBulbAction)
+                    onHovered: function(h) { content.view.hoverAction(deviceItem.rowBulbAction, h) }
+                  }
                 }
               }
 
@@ -338,6 +337,10 @@ Item {
             Text {
               id: percent
               textFormat: Text.PlainText
+              // At least as wide as "100%", so the column and the buttons before it
+              // stay put whatever the level.
+              width: Math.max(implicitWidth, widestPercent.advanceWidth)
+              horizontalAlignment: Text.AlignRight
               anchors.right: chevron.left
               anchors.rightMargin: Style.space(2)
               anchors.verticalCenter: parent.verticalCenter
@@ -347,6 +350,12 @@ Item {
               font.family: content.view.fontFamily
               font.pixelSize: Style.font.heading
               font.bold: true
+            }
+
+            TextMetrics {
+              id: widestPercent
+              font: percent.font
+              text: "100%"
             }
 
             PanelActionButton {
