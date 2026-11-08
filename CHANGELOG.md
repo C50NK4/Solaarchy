@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- LED Effects quotes every part of the command it runs to change a mouse's
+  effect or colour, not only the device name. Values read back from Solaar's
+  saved settings can no longer break out of the command.
+
 ## 1.1.2
 
 - **Haptics**, a built-in add-on by @hypergol-d (#4): a mouse with a haptic
