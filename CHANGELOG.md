@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Much lighter in the background.** The connection monitor no longer loads
+  Solaar's library or pyudev: it finds the HID++ receivers in sysfs and hears
+  hotplug straight from udev, with the kernel filtering out everything but
+  hidraw events, and stays at about 13 MB instead of about 46 MB. A receiver
+  that keeps repeating "connected" for a device that never left (a Lightspeed
+  receiver with a charging G502 X sent one every ~3.8 s, and each cost a full
+  read of every device) is passed on at most every 5 minutes.
+- **Faster reads.** A read takes about 0.2 s of CPU instead of about 1.2 s:
+  finding a paired device's node no longer walks every udev entry for a full
+  second, the device list is enumerated once per read, and the per-read
+  double-check only runs while another program (the Solaar app, logiops,
+  …) has a receiver open. When one device wakes or its backlight is switched,
+  only that device is read, and the others stay as they are.
 - LED Effects quotes every part of the command it runs to change a mouse's
   effect or colour, not only the device name. Values read back from Solaar's
   saved settings can no longer break out of the command.

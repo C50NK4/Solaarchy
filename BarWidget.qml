@@ -213,10 +213,21 @@ BarWidget {
   property var pendingBacklight: ({})
   // Called with true or false when the running backlight switch ends.
   property var backlightDone: null
+  // The switched keyboard's read target (see targetOf); "" reads everything.
+  property string backlightTarget: ""
   // Device id -> 0/1: the light a keyboard had before its link dropped,
   // put back after it reconnects (see restoreBacklight()).
   property var backlightRestore: ({})
   property bool refreshQueued: false
+  // What the queued read covers: "path:number" for one receiver pairing,
+  // "" for everything.
+  property string queuedTarget: ""
+  // Whether the running read was a partial (--only) one.
+  property bool statusPartial: false
+  // Monitor events waiting for eventRefresh: the pairings the monitor reported,
+  // and whether a receiver or direct device came or went (a full read).
+  property var eventTargets: ({})
+  property bool eventFull: false
   // Settings changed in the panel show at once while `omarchy bar set`
   // round-trips through shell.json; each is dropped as the shell reports it
   // back, or after a few seconds if the write never lands.
@@ -424,16 +435,36 @@ BarWidget {
     return n !== "" && n !== "?" && n.indexOf("Unknown device") !== 0
   }
 
-  function refresh() {
+  // target: "path:number" reads just that receiver pairing (one device
+  // woke, or its backlight was switched); omitted reads everything.
+  function refresh(target) {
+    target = target || ""
     // Asked mid-read (e.g. right after a backlight switch): that read may
-    // predate the change, so run another one as soon as it ends.
-    if (statusProc.running) { refreshQueued = true; return }
+    // predate the change, so run another one as soon as it ends. Two
+    // different asks queue one full read.
+    if (statusProc.running) { queueRefresh(target); return }
     // A device's feature table is read once, then kept with the device.
     var known = []
     for (var i = 0; i < devices.length; i++)
       if (devices[i].features && known.indexOf(String(devices[i].id)) < 0) known.push(String(devices[i].id))
-    statusProc.command = ["/usr/bin/python3", root.helperPath, "--known=" + known.join(",")]
+    var command = ["/usr/bin/python3", root.helperPath, "--known=" + known.join(",")]
+    if (target !== "") command.push("--only=" + target)
+    statusProc.command = command
+    statusPartial = target !== ""
     statusProc.running = true
+  }
+
+  function queueRefresh(target) {
+    target = target || ""
+    queuedTarget = refreshQueued && queuedTarget !== target ? "" : target
+    refreshQueued = true
+  }
+
+  // A receiver pairing's read target, or "" when only a full read finds it
+  // (a direct Bluetooth or USB node).
+  function targetOf(device) {
+    if (!device || !device.receiver || !device.path || device.number === null || device.number === undefined) return ""
+    return device.path + ":" + device.number
   }
 
   // Drop the optimistic backlight state only when no newer answer is coming:
@@ -444,6 +475,8 @@ BarWidget {
   }
 
   function applyStatus(raw) {
+    var askedPartial = statusPartial
+    statusPartial = false
     // Settle on every finished read, failed ones included, so a failed read
     // can't leave the switch stuck on a state that was never confirmed.
     settleBacklight()
@@ -453,6 +486,8 @@ BarWidget {
     try {
       doc = JSON.parse(lines[lines.length - 1])
     } catch (e) {
+      // A one-pairing read that crashed: read everything instead.
+      if (askedPartial) { eventFull = true; eventRefresh.restart(); return }
       lastError = "Could not read device status"
       return
     }
@@ -462,8 +497,14 @@ BarWidget {
       lastError = String(doc.error)
       return
     }
-    warnings = Array.isArray(doc.warnings) ? doc.warnings.map(String) : []
-    presentNow = (Array.isArray(doc.receivers) && doc.receivers.length > 0)
+    // A partial read (--only) covers one pairing: everything it doesn't
+    // mention stays exactly as it was, in place, and nothing else is dropped.
+    var partial = doc.partial === true
+    var docWarnings = Array.isArray(doc.warnings) ? doc.warnings.map(String) : []
+    if (!partial) warnings = docWarnings
+    else if (docWarnings.length > 0)
+      warnings = warnings.concat(docWarnings.filter(function(w) { return warnings.indexOf(w) < 0 }))
+    if (!partial) presentNow = (Array.isArray(doc.receivers) && doc.receivers.length > 0)
       || (Array.isArray(doc.devices) && doc.devices.some(function(d) { return d && !d.receiver && d.online }))
       || Number(doc.bluetooth) > 0
 
@@ -478,6 +519,7 @@ BarWidget {
 
     var now = Date.now()
     var merged = []
+    var placedAt = {}  // partial reads: index in `devices` -> index in `merged`
     var incoming = doc.devices || []
     for (var j = 0; j < incoming.length; j++) {
       var d = incoming[j]
@@ -509,6 +551,7 @@ BarWidget {
         if (!d.online) d.id = old.id
       }
       if (old) previous[oldAt] = null
+      if (partial && old) placedAt[oldAt] = merged.length
       d.stale = false
       if (d.battery) d.battery.readAt = now
       if (!d.online && old) {
@@ -540,6 +583,29 @@ BarWidget {
         if (!d.features && old.features) d.features = old.features
       }
       merged.push(d)
+    }
+    if (partial) {
+      // Same order as before, the read device swapped in where it was. A
+      // different id on the same receiver slot (re-paired, or a serial that
+      // finally answered) replaces the old row instead of joining it.
+      var slotOf = function(x) { return x && x.receiver && x.path ? x.path + ":" + x.number : "" }
+      var bySlot = {}
+      for (var bs = 0; bs < merged.length; bs++) if (slotOf(merged[bs])) bySlot[slotOf(merged[bs])] = bs
+      var inPlace = []
+      var used = {}
+      for (var pi = 0; pi < devices.length; pi++) {
+        var slot = slotOf(devices[pi])
+        if (placedAt[pi] !== undefined && !used[placedAt[pi]]) { inPlace.push(merged[placedAt[pi]]); used[placedAt[pi]] = true }
+        else if (slot && bySlot[slot] !== undefined) {
+          if (!used[bySlot[slot]]) { inPlace.push(merged[bySlot[slot]]); used[bySlot[slot]] = true }
+          delete lowNotified[devices[pi].id]
+        }
+        else inPlace.push(devices[pi])
+      }
+      for (var pe = 0; pe < merged.length; pe++) if (!used[pe]) inPlace.push(merged[pe])
+      merged = inPlace
+      // Nothing outside this pairing was read: skip the keep-or-drop pass below.
+      previous = []
     }
     // A device can be missing from this read entirely rather than merely
     // reported offline (e.g. its whole receiver was unplugged, so it was
@@ -576,6 +642,9 @@ BarWidget {
     // Same idea for receivers: don't drop one this read didn't list while a
     // device that belongs to it is still being shown (stale or not).
     var mergedReceivers = Array.isArray(doc.receivers) ? doc.receivers.map(String) : []
+    if (partial)
+      for (var pr = 0; pr < receivers.length; pr++)
+        if (mergedReceivers.indexOf(receivers[pr]) < 0) mergedReceivers.push(receivers[pr])
     var receiverSet = {}
     for (var r = 0; r < mergedReceivers.length; r++) receiverSet[mergedReceivers[r]] = true
     for (var m = 0; m < merged.length; m++) {
@@ -606,8 +675,7 @@ BarWidget {
       devices = merged
       lastDeviceSignature = sig
     }
-    lastError = ""
-    lastUpdated = now
+    if (!partial) { lastError = ""; lastUpdated = now }
     // Only a device paired while the shell runs is new: at login (or with no
     // saved state) every device would otherwise be announced at once.
     var paired = []
@@ -615,7 +683,15 @@ BarWidget {
       for (var a = 0; a < shown.length; a++)
         if (shown[a].online && !knownIds[String(shown[a].id)]) paired.push(String(shown[a].id))
     }
-    loaded = true
+    if (!partial) loaded = true
+    // A partial read that failed (a warning, a busy device, nothing back)
+    // gets one full read soon after: the monitor won't pass the same link
+    // state on again for a while.
+    if (partial && (docWarnings.length > 0 || incoming.length === 0
+                    || incoming.some(function(x) { return x && x.busy }))) {
+      eventFull = true
+      eventRefresh.restart()
+    }
     checkLowBattery()
     checkConnections(paired)
     saveState()
@@ -783,6 +859,12 @@ BarWidget {
     if (ev.event === "error") { monitorError = String(ev.error || "monitor failed"); return }
     monitorError = ""
     if (ev.event === "link" && !ev.online && markOffline(ev.path, ev.number)) return
+    if (ev.event === "hotplug") eventFull = true
+    else if (ev.event === "link") {
+      var next = Object.assign({}, eventTargets)
+      next[ev.path + ":" + ev.number] = true
+      eventTargets = next
+    }
     if (ev.event === "link" || ev.event === "hotplug") eventRefresh.restart()
   }
 
@@ -798,7 +880,7 @@ BarWidget {
     if (!found) return false
     devices = next
     // A read already under way may have pinged before the link dropped.
-    if (statusProc.running) refreshQueued = true
+    if (statusProc.running) queueRefresh(path + ":" + number)
     checkConnections(null)
     saveState()
     return true
@@ -854,6 +936,7 @@ BarWidget {
     // finds no choice and `solaar config` crashes (seen with Solaar 1.1.20).
     // sh -c exec: a missing binary is sh exiting 127, never a failed start
     // inside the shell process.
+    backlightTarget = targetOf(device)
     backlightProc.command = locked(["/bin/sh", "-c", 'exec "$0" "$@"', "solaar", "config",
       solaarDeviceArg(device), "backlight", target === 1 ? "lowest" : "highest"])
     backlightProc.running = true
@@ -1221,8 +1304,10 @@ BarWidget {
     }
     onExited: {
       if (!root.refreshQueued) return
+      var target = root.queuedTarget
       root.refreshQueued = false
-      Qt.callLater(root.refresh)
+      root.queuedTarget = ""
+      Qt.callLater(function() { root.refresh(target) })
     }
   }
 
@@ -1245,7 +1330,14 @@ BarWidget {
   Timer {
     id: eventRefresh
     interval: 2500
-    onTriggered: root.refresh()
+    onTriggered: {
+      // One pairing reported reads that pairing alone; anything more reads all.
+      var targets = Object.keys(root.eventTargets)
+      var target = !root.eventFull && targets.length === 1 ? targets[0] : ""
+      root.eventTargets = ({})
+      root.eventFull = false
+      root.refresh(target)
+    }
   }
 
   Process {
@@ -1284,7 +1376,7 @@ BarWidget {
       var done = root.backlightDone
       root.backlightDone = null
       if (done) done(exitCode === 0)
-      root.refresh()
+      root.refresh(root.backlightTarget)
     }
   }
 

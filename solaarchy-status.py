@@ -18,6 +18,16 @@ device not in that list also gets "features": the sorted Solaar names of the
 features in its HID++ 2.0 table, [] for a HID++ 1.0 device. The key is left out
 when the table did not read the same twice. Without --known, no feature table
 is read at all.
+
+With --only PATH:NUMBER, just that receiver pairing is read (a device woke, or
+its backlight was switched): {"partial": true, "receivers": [...],
+"devices": [...], "warnings": [...]}, with no "listed" and no "bluetooth", and
+"partial" even when nothing could be read, so the bar keeps every other device
+as it was and retries with a full read.
+
+Every read's per-device cross-check (see solaarchy_common.consistent) runs only
+while another program may be asking the same receivers (see other_writers):
+without one there is no reply to mistake for ours.
 """
 
 import argparse
@@ -38,19 +48,32 @@ _listed = []
 _warnings = []
 
 
-def _known_ids():
-    """Ids given with --known; None without it, and then no feature table is read."""
+def _args():
+    """(known, only): the ids given with --known, None without it (and then no
+    feature table is read); and --only's (hidraw path, slot), or None."""
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--only",
+        metavar="PATH:NUMBER",
+        help="read just this receiver pairing (a partial read: no 'listed', no Bluetooth count)",
+    )
     parser.add_argument(
         "--known",
         metavar="ID,ID,...",
         help="also list the HID++ features of every online device not in this list ('' for none)",
     )
-    known = parser.parse_args().known
-    return None if known is None else set(known.split(","))
+    args = parser.parse_args()
+    only = None
+    if args.only:
+        path, _, number = args.only.rpartition(":")
+        try:
+            only = (path, int(number))
+        except ValueError:
+            only = None
+    return (None if args.known is None else set(args.known.split(","))), only
 
 
-_known = _known_ids()
+_known, _only = _args()
 
 
 def _emit(doc):
@@ -78,10 +101,14 @@ def _bluetooth_paired():
 
 
 # Asked before the device lock, so a slow BlueZ never holds up a device read.
-_bluetooth = _bluetooth_paired()
+_bluetooth = None if _only else _bluetooth_paired()
 
 
 def _result():
+    # A partial read stays partial even when it read nothing, so the bar
+    # retries with a full read instead of showing a bar-wide error.
+    if _only:
+        return {"partial": True, "receivers": _receivers, "devices": _devices, "warnings": _warnings}
     if not _devices and not _receivers and _warnings:
         return {"error": "; ".join(_warnings)}
     return {"receivers": _receivers, "devices": _devices, "listed": _listed, "warnings": _warnings,
@@ -121,6 +148,32 @@ except Exception as e:  # Solaar missing or incompatible
 _solaar_config.save = lambda *args, **kwargs: None
 _solaar_config.do_save = lambda *args, **kwargs: None
 
+from solaarchy_common import other_writers as _other_writers
+from solaarchy_common import paired_node as _paired_node
+
+# Solaar finds a paired device's own hidraw node by walking every udev entry
+# through pyudev, again and again for a full second when the device has none
+# (a Bolt keyboard, say): about 1 s of CPU per such device per read. Here it
+# is one pass over sysfs. With no node found, Solaar talks to the device
+# through the receiver's handle, as it does for any device without its own.
+base.find_paired_node = lambda receiver_path, index, timeout: _paired_node(receiver_path, index)
+
+# Solaar's CLI enumerates (pyudev, plus a report descriptor parse per node)
+# once per node _scan opens, on top of main()'s own walk; once per read is
+# enough.
+_enumerated = None
+_receivers_and_devices_uncached = base.receivers_and_devices
+
+
+def _enumerate_once():
+    global _enumerated
+    if _enumerated is None:
+        _enumerated = list(_receivers_and_devices_uncached())
+    return iter(_enumerated)
+
+
+base.receivers_and_devices = _enumerate_once
+
 from solaarchy_common import consistent as _consistent
 from solaarchy_common import device_id as _device_id
 from solaarchy_common import forget_features as _forget_features
@@ -137,6 +190,19 @@ except OSError as e:
     sys.exit(1)
 fcntl.flock(_lock, fcntl.LOCK_EX)  # the 20 s alarm bounds the wait
 signal.alarm(20)  # and the read itself gets a fresh 20 s
+
+
+# The per-read reply-race audit (consistent) only matters while another
+# process may be asking the same receivers: the Solaar GUI, or another HID++
+# manager. Without one it doubles every read for nothing.
+_contended = None
+
+
+def _audit():
+    global _contended
+    if _contended is None:
+        _contended = _safe(lambda: _other_writers({i.path for i in _enumerate_once()}), True)
+    return _contended
 
 
 def _battery(dev):
@@ -225,6 +291,9 @@ def _features(dev):
     # The same reply race as in _consistent(): only a table read the same
     # twice in a row counts; otherwise the caller asks again next time.
     first = _safe(lambda: _feature_table(dev))
+    # Always read twice, even without contention (_audit): this runs once per
+    # device and the bar keeps the table for good, so a writer
+    # other_writers() can't see must not get a raced table kept.
     if first is not None and first == _safe(lambda: _feature_table(dev)):
         return first
     return None
@@ -265,7 +334,7 @@ def _device(dev, receiver_name, path):
             # codename/name/kind reach HID++2.0 devices through the same
             # feature_request() primitive, so they're checked by the same
             # cross-process consistency audit, not trusted separately.
-            if _safe(lambda: _consistent(dev), False):
+            if not _audit() or _safe(lambda: _consistent(dev), False):
                 entry["name"], entry["fullName"], entry["kind"] = name, full_name, kind
                 entry["battery"], entry["backlight"] = battery, backlight
                 if _known is not None and entry["id"] not in _known:
@@ -314,7 +383,11 @@ def _scan(info):
         if isinstance(obj, Receiver):
             _receivers.append(obj.name)
             try:
-                paired = [dev for dev in obj if dev is not None]
+                if _only:
+                    dev = obj[_only[1]] if 1 <= _only[1] <= 15 else None  # some receivers number past max_devices
+                    paired = [dev] if dev is not None else []
+                else:
+                    paired = [dev for dev in obj if dev is not None]
             except Exception as e:
                 _warnings.append(f"could not list devices on {obj.name}: {e}")
                 continue
@@ -329,6 +402,8 @@ def _scan(info):
 
 def main():
     for info in list(base.receivers_and_devices()):
+        if _only and info.path != _only[0]:
+            continue
         _scan(info)
     # Last-resort safety net: _device_id() only comes back empty if even the
     # device's own hidraw path was missing, which shouldn't happen, but such
