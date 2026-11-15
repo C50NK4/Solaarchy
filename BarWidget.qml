@@ -862,8 +862,10 @@ BarWidget {
     if (ev.event === "link" && !ev.online && markOffline(ev.path, ev.number)) return
     // A device's own notification counts only from its battery or backlight
     // feature (the charger plugged in or out, a backlight key pressed).
-    if (ev.event === "notify" && !watchedNotification(ev)) return
-    if (ev.event === "hotplug") eventFull = true
+    var watched = ev.event === "notify" ? watchedNotification(ev) : ""
+    if (ev.event === "notify" && watched === "") return
+    // A directly connected device has no pairing to read alone: read all.
+    if (ev.event === "hotplug" || watched === "full") eventFull = true
     else if (ev.event === "link" || ev.event === "notify") {
       var next = Object.assign({}, eventTargets)
       next[ev.path + ":" + ev.number] = true
@@ -872,14 +874,18 @@ BarWidget {
     if (ev.event === "link" || ev.event === "hotplug" || ev.event === "notify") eventRefresh.restart()
   }
 
+  // "target" for a receiver pairing whose battery or backlight feature sent
+  // ev, "full" for such a directly connected (Bluetooth or USB) device, ""
+  // for anything else.
   function watchedNotification(ev) {
     for (var i = 0; i < devices.length; i++) {
       var d = devices[i]
-      if (d.receiver && d.path === ev.path && d.number === ev.number
-          && Array.isArray(d.notifyFeatures) && d.notifyFeatures.indexOf(ev.feature) >= 0)
-        return true
+      if (d.path !== ev.path || !Array.isArray(d.notifyFeatures) || d.notifyFeatures.indexOf(ev.feature) < 0)
+        continue
+      if (!d.receiver) return "full"
+      if (d.number === ev.number) return "target"
     }
-    return false
+    return ""
   }
 
   // A disconnect needs no read: the event already says the device is gone,
