@@ -378,16 +378,20 @@ Solaarchy does:
   ask each device for its battery and backlight state. It runs when the panel
   opens, after connection changes, and every `refreshIntervalSec`. The first
   time a device is seen awake it also reads its HID++ feature list (twice, to
-  be sure), which is kept with the device so it is not asked again. It does not
+  be sure), which is kept with the device so it is not asked again. When one
+  device wakes or its backlight is switched, only that device is read. It does not
   change any device setting and never writes Solaar's configuration. Reads are
   serialized with a lock file in a directory only you can write to
   (`$XDG_RUNTIME_DIR`, else `~/.cache/solaarchy`), never a shared one like
-  `/tmp`, and every read is double-checked, because HID++ replies from other programs (the Solaar app
-  included) can otherwise be mistaken for its own.
+  `/tmp`. While another program has a receiver open (the Solaar app, or a
+  HID++ daemon such as logiops), every read is double-checked, because its
+  HID++ replies could otherwise be mistaken for Solaarchy's own.
 - **Watching connections:** `solaarchy-monitor.py` runs for as long as the
   widget is enabled. It opens the Logitech receivers' `/dev/hidraw*` nodes
   read-only and listens for connect/disconnect messages and USB hotplug
-  events. It never writes to a device. The kernel stops it together with the
+  events, using only Python's standard library (about 13 MB). A receiver that
+  keeps repeating the same "connected" message is passed on at most every
+  5 minutes. It never writes to a device. The kernel stops it together with the
   shell.
 - **Bluetooth pairings:** each read also asks BlueZ, read-only over the system
   bus (`busctl … GetManagedObjects`), how many Logitech devices are paired, so
