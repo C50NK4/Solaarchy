@@ -581,6 +581,7 @@ BarWidget {
         if (!d.battery && old.battery) { d.battery = old.battery; d.stale = true }
         if (!d.backlight && old.backlight) d.backlight = old.backlight
         if (!d.features && old.features) d.features = old.features
+        if (!d.notifyFeatures && old.notifyFeatures) d.notifyFeatures = old.notifyFeatures
       }
       merged.push(d)
     }
@@ -859,13 +860,26 @@ BarWidget {
     if (ev.event === "error") { monitorError = String(ev.error || "monitor failed"); return }
     monitorError = ""
     if (ev.event === "link" && !ev.online && markOffline(ev.path, ev.number)) return
+    // A device's own notification counts only from its battery or backlight
+    // feature (the charger plugged in or out, a backlight key pressed).
+    if (ev.event === "notify" && !watchedNotification(ev)) return
     if (ev.event === "hotplug") eventFull = true
-    else if (ev.event === "link") {
+    else if (ev.event === "link" || ev.event === "notify") {
       var next = Object.assign({}, eventTargets)
       next[ev.path + ":" + ev.number] = true
       eventTargets = next
     }
-    if (ev.event === "link" || ev.event === "hotplug") eventRefresh.restart()
+    if (ev.event === "link" || ev.event === "hotplug" || ev.event === "notify") eventRefresh.restart()
+  }
+
+  function watchedNotification(ev) {
+    for (var i = 0; i < devices.length; i++) {
+      var d = devices[i]
+      if (d.receiver && d.path === ev.path && d.number === ev.number
+          && Array.isArray(d.notifyFeatures) && d.notifyFeatures.indexOf(ev.feature) >= 0)
+        return true
+    }
+    return false
   }
 
   // A disconnect needs no read: the event already says the device is gone,

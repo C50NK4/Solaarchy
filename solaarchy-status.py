@@ -256,6 +256,23 @@ def _backlight(dev):
     return result
 
 
+def _notify_features(dev):
+    """Feature indexes whose notifications should refresh this device: its
+    battery's and its backlight's. Read from what the battery and backlight
+    reads just looked up, so this asks the device nothing."""
+    found = []
+    features = getattr(dev, "features", None)
+    if not isinstance(features, hidpp20.FeaturesArray):
+        return found
+    for feature in (SupportedFeature.UNIFIED_BATTERY, SupportedFeature.BATTERY_STATUS,
+                    SupportedFeature.BATTERY_VOLTAGE, SupportedFeature.ADC_MEASUREMENT,
+                    SupportedFeature.BACKLIGHT2):
+        index = dict.get(features, feature)
+        if isinstance(index, int) and not isinstance(index, bool) and index > 0:
+            found.append(index)
+    return found
+
+
 def _feature_table(dev):
     """Sorted names of the features in dev's HID++ 2.0 table that users may see.
 
@@ -337,6 +354,7 @@ def _device(dev, receiver_name, path):
             if not _audit() or _safe(lambda: _consistent(dev), False):
                 entry["name"], entry["fullName"], entry["kind"] = name, full_name, kind
                 entry["battery"], entry["backlight"] = battery, backlight
+                entry["notifyFeatures"] = _notify_features(dev)
                 if _known is not None and entry["id"] not in _known:
                     features = _features(dev)
                     if features is not None:

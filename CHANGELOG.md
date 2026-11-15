@@ -15,6 +15,9 @@
   double-check only runs while another program (the Solaar app, logiops,
   …) has a receiver open. When one device wakes or its backlight is switched,
   only that device is read, and the others stay as they are.
+- **Charging shows up right away.** A device's own battery and backlight
+  notifications (the charger plugged in or pulled out, a backlight key) now
+  read that device within seconds, instead of on the next periodic read.
 - LED Effects quotes every part of the command it runs to change a mouse's
   effect or colour, not only the device name. Values read back from Solaar's
   saved settings can no longer break out of the command.

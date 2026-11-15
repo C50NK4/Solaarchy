@@ -3,6 +3,9 @@
 
 Prints one JSON line per event and never exits on its own:
   {"event": "link", "path": "/dev/hidraw3", "number": 2, "online": false}
+  {"event": "notify", "path": "/dev/hidraw3", "number": 2, "feature": 7}
+                         a device's own HID++ 2.0 notification (e.g. its
+                         battery feature reporting the charger unplugged)
   {"event": "hotplug"}   a HID++ receiver or directly connected device came or went
   {"event": "ready"}     listening; sent once at startup
 
@@ -58,6 +61,21 @@ def emit(doc):
         _stdout.flush()
     except BrokenPipeError:  # the shell went away
         os._exit(0)
+
+
+def notification(data):
+    """(number, feature index) for a device's own HID++ 2.0 notification.
+
+    A notification carries software id 0 (low nibble of byte 3), which tells
+    it apart from replies to requests other programs make. Byte 2 is the
+    feature's index on that device; receiver notifications (HID++ 1.0) use
+    sub-ids from 0x40 up there instead.
+    """
+    if len(data) < 4 or data[0] not in (HIDPP_SHORT, HIDPP_LONG):
+        return None
+    if not 0 < data[2] < 0x40 or data[3] & 0x0F:
+        return None
+    return data[1], data[2]
 
 
 def parse(data):
@@ -241,8 +259,13 @@ def main():
                 emit({"event": "hotplug"})
                 continue
             link = parse(data)
-            if link is not None and announce(path, *link):
-                emit({"event": "link", "path": path, "number": link[0], "online": link[1]})
+            if link is not None:
+                if announce(path, *link):
+                    emit({"event": "link", "path": path, "number": link[0], "online": link[1]})
+                continue
+            note = notification(data)
+            if note is not None:
+                emit({"event": "notify", "path": path, "number": note[0], "feature": note[1]})
 
 
 if __name__ == "__main__":
